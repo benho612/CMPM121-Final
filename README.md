@@ -1,5 +1,6 @@
 # CMPM121-Final  
-  
+# Devlog Entry - [11-13-2025]  
+- updated README.md  
 ## Introducing the team  
 - Tools Lead: Eric Cai  
 - Engine Lead: Ben Ho  
