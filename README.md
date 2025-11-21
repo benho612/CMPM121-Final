@@ -1,4 +1,12 @@
-# CMPM121-Final  
+# CMPM121-Final 
+# Devlog Entry - [11-21-2025]  
+- updated Dev Log  
+## How we satisfied the software requirements
+We will use third-party 3D rendering: 3DreamEngine and third-party physics simulation: bullet3-lua. After every commit, Luacheck checks our code for errors and blocks the commit if anything is wrong, and StyLua automatically formats the code. After every push, GitHub Actions builds the game for us and uploads the new version online to GitHub Pages. This means we never manually package or upload the game — it happens automatically.  
+  
+## Reflection
+We have decided on the mechanics of the game very smoothly. However, we all had a relatively hard time learning how Lua works because it is a new language for the whole team, and how to implement all the libraries that we need to use. There are several similar libraries, and sometimes some are deprecated and no longer being supported, so the tool lead has to find new libraries. The game gets tested by the test lead, who found some collision bugs and reported them for future correction.   
+  
 # Devlog Entry - [11-13-2025]  
 - updated README.md  
 ## Introducing the team  
