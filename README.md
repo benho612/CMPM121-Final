@@ -1,4 +1,12 @@
 # CMPM121-Final 
+Download dependencies:  
+- wasm2lua:  
+  - npm i -g wasm2lua  
+Used Libraries: 
+- https://github.com/3dreamengine/3DreamEngine  
+- https://github.com/SwadicalRag/bullet3-lua  
+- https://github.com/SwadicalRag/wasm2lua  
+
 # Devlog Entry - [11-21-2025]  
 - updated Dev Log  
 ## How we satisfied the software requirements
