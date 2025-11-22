@@ -1,0 +1,45 @@
+{
+    "name": "f1-gravity-tilt",
+    "version": "1.0.0",
+    "description": "F1 Game Prototype using Three.js and Cannon-es",
+    "main": "index.js",
+    "type": "module",
+    "scripts": {
+        "start": "live-server",
+        "lint": "eslint .",
+        "format": "prettier --write .",
+        "prepare": "husky install"
+    },
+    "keywords": [
+        "three.js",
+        "cannon-es",
+        "game",
+        "f1"
+    ],
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+        "eslint": "^8.57.1",
+        "husky": "^9.1.7",
+        "lint-staged": "^15.5.2",
+        "prettier": "^3.6.2"
+    },
+    "lint-staged": {
+        "*.js": [
+            "eslint --fix",
+            "prettier --write"
+        ],
+        "*.html": [
+            "prettier --write"
+        ]
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/benho612/CMPM121-Final.git"
+    },
+    "bugs": {
+        "url": "https://github.com/benho612/CMPM121-Final/issues"
+    },
+    "homepage": "https://github.com/benho612/CMPM121-Final#readme"
+    
+}
