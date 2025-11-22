@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F1 Prototype: Gravity Tilt</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Courier New', Courier, monospace; background-color: #111; }
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #status-msg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            display: none;
+            text-shadow: 2px 2px 0 #000;
+            text-align: center;
+        }
+        .win { color: #4ade80; }
+        .lose { color: #f87171; }
+        #instructions {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 4px;
+        }
+    </style>
+    <!-- Import Maps for Three.js and Cannon-es -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="ui-layer">
+        <div id="instructions">
+            <h2>Gravity Tilt</h2>
+            <p>Use <b>Arrow Keys</b> to tilt the floor.</p>
+            <p>Get the ball to the <b>Green Zone</b>.</p>
+            <p>Don't fall off!</p>
+            <p><small>Press R to Restart</small></p>
+        </div>
+    </div>
+    <div id="status-msg"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import * as CANNON from 'cannon-es';
+
+        // --- Global Variables ---
+        let scene, camera, renderer;
+        let world;
+        let timeStep = 1 / 60;
+        let lastCallTime;
+        let gameActive = true;
+
+        // Meshes and Bodies
+        let ballMesh, ballBody;
+        let floorMesh, floorBody;
+        let targetMesh; // Visual only, simplified logic
+
+        // Game State
+        const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+        const TARGET_POS = { x: 8, z: 8 };
+        const TARGET_RADIUS = 1.5;
+
+        init();
+        animate();
+
+        function init() {
+            // 1. THREE.JS SETUP
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x202025);
+            scene.fog = new THREE.Fog(0x202025, 10, 50);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(0, 20, 25);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.camera.top = 20;
+            dirLight.shadow.camera.bottom = -20;
+            dirLight.shadow.camera.left = -20;
+            dirLight.shadow.camera.right = 20;
+            scene.add(dirLight);
+
+            // 2. CANNON-ES SETUP
+            world = new CANNON.World({
+                gravity: new CANNON.Vec3(0, -9.82, 0), // Earth gravity
+            });
+
+            // Materials
+            const physicsMaterial = new CANNON.Material('physics');
+            const physicsContactMaterial = new CANNON.ContactMaterial(
+                physicsMaterial, physicsMaterial, { friction: 0.5, restitution: 0.3 }
+            );
+            world.addContactMaterial(physicsContactMaterial);
+
+            // --- GAME OBJECTS ---
+
+            // A. The Floor (Kinematic Body so we can rotate it)
+            const floorGeo = new THREE.BoxGeometry(20, 1, 20);
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x555566 });
+            floorMesh = new THREE.Mesh(floorGeo, floorMat);
+            floorMesh.receiveShadow = true;
+            scene.add(floorMesh);
+
+            const floorShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
+            floorBody = new CANNON.Body({
+                mass: 0, // Mass 0 = Static/Kinematic
+                type: CANNON.Body.KINEMATIC,
+                material: physicsMaterial
+            });
+            floorBody.addShape(floorShape);
+            world.addBody(floorBody);
+
+            // B. The Ball
+            const ballRadius = 0.8;
+            const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
+            const ballMat = new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.4 });
+            ballMesh = new THREE.Mesh(ballGeo, ballMat);
+            ballMesh.castShadow = true;
+            scene.add(ballMesh);
+
+            const ballShape = new CANNON.Sphere(ballRadius);
+            ballBody = new CANNON.Body({
+                mass: 5,
+                shape: ballShape,
+                material: physicsMaterial
+            });
+            ballBody.position.set(-5, 5, -5); // Start position
+            ballBody.linearDamping = 0.1;
+            world.addBody(ballBody);
+
+            // C. Target Zone (Visual)
+            const targetGeo = new THREE.CylinderGeometry(TARGET_RADIUS, TARGET_RADIUS, 0.1, 32);
+            const targetMat = new THREE.MeshBasicMaterial({ color: 0x4ade80, opacity: 0.5, transparent: true });
+            targetMesh = new THREE.Mesh(targetGeo, targetMat);
+            targetMesh.position.set(TARGET_POS.x, 0.6, TARGET_POS.z);
+            floorMesh.add(targetMesh); // Child of floor so it rotates with it
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('keydown', (e) => {
+                if(keys.hasOwnProperty(e.key)) keys[e.key] = true;
+                if(e.key.toLowerCase() === 'r') restartGame();
+            });
+            window.addEventListener('keyup', (e) => {
+                if(keys.hasOwnProperty(e.key)) keys[e.key] = false;
+            });
+        }
+
+        function restartGame() {
+            gameActive = true;
+            
+            // Reset Ball
+            ballBody.position.set(-5, 5, -5);
+            ballBody.velocity.set(0, 0, 0);
+            ballBody.angularVelocity.set(0, 0, 0);
+            
+            // Reset Floor
+            floorBody.quaternion.setFromEuler(0, 0, 0);
+            
+            // Reset UI
+            const statusEl = document.getElementById('status-msg');
+            statusEl.style.display = 'none';
+            statusEl.className = '';
+        }
+
+        function updatePhysics() {
+            if (!gameActive) return;
+
+            // 1. Input Handling -> Tilt Floor
+            const tiltSpeed = 0.02;
+            const maxTilt = 0.3;
+            
+            // We manipulate the quaternion directly or Euler angles
+            // Current rotation
+            const currentEuler = new CANNON.Vec3();
+            floorBody.quaternion.toEuler(currentEuler);
+
+            // Desired changes based on keys
+            let targetX = 0;
+            let targetZ = 0;
+
+            if (keys.ArrowUp) targetX = -maxTilt;
+            if (keys.ArrowDown) targetX = maxTilt;
+            if (keys.ArrowLeft) targetZ = maxTilt;
+            if (keys.ArrowRight) targetZ = -maxTilt;
+
+            // Lerp towards target rotation for smoothness
+            currentEuler.x += (targetX - currentEuler.x) * 0.05;
+            currentEuler.z += (targetZ - currentEuler.z) * 0.05;
+
+            floorBody.quaternion.setFromEuler(currentEuler.x, 0, currentEuler.z);
+
+            // 2. Step Physics
+            world.step(timeStep);
+
+            // 3. Copy Coords from Cannon to Three
+            ballMesh.position.copy(ballBody.position);
+            ballMesh.quaternion.copy(ballBody.quaternion);
+            
+            floorMesh.position.copy(floorBody.position);
+            floorMesh.quaternion.copy(floorBody.quaternion);
+
+            // 4. Win/Loss Logic
+            checkWinCondition();
+        }
+
+        function checkWinCondition() {
+            // Check Fall (Loss)
+            if (ballBody.position.y < -10) {
+                endGame(false);
+            }
+
+            // Check Target (Win)
+            // Calculate distance on XZ plane
+            const dx = ballBody.position.x - TARGET_POS.x;
+            const dz = ballBody.position.z - TARGET_POS.z;
+            const dist = Math.sqrt(dx*dx + dz*dz);
+
+            if (dist < TARGET_RADIUS && ballBody.position.y > -1) {
+                endGame(true);
+            }
+        }
+
+        function endGame(isWin) {
+            gameActive = false;
+            const statusEl = document.getElementById('status-msg');
+            statusEl.style.display = 'block';
+            if (isWin) {
+                statusEl.textContent = "SUCCESS!";
+                statusEl.classList.add('win');
+            } else {
+                statusEl.textContent = "FAILURE";
+                statusEl.classList.add('lose');
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updatePhysics();
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
