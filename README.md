@@ -1,19 +1,11 @@
 # CMPM121-Final 
-Download dependencies:  
-- wasm2lua:  
-  - npm i -g wasm2lua  
-Used Libraries: 
-- https://github.com/3dreamengine/3DreamEngine  
-- https://github.com/SwadicalRag/bullet3-lua
-- https://github.com/SwadicalRag/wasm2lua  
-
 # Devlog Entry - [11-21-2025]  
 - updated Dev Log  
 ## How we satisfied the software requirements
-We will use third-party 3D rendering: 3DreamEngine and third-party physics simulation: bullet3-lua. After every commit, Luacheck checks our code for errors and blocks the commit if anything is wrong, and StyLua automatically formats the code. After every push, GitHub Actions builds the game for us and uploads the new version online to GitHub Pages. This means we never manually package or upload the game — it happens automatically.  
+We built the prototype using standard HTML5 and JavaScript. This browser DOM has no native concept of 3D rendering or rigid body physics simulations, which satisfies the built-in physics requirements. For third-party 3D rendering library, we integrated Three.js that hendles the WebGL context, scene graph, camera, and etc. For third-party physics sim, we use cannon-es. This is a pure JavaScript physics engine. Handles collision detection and rigid body dynamics. The game we did is a balance puzzle. The player uses the Arrow Keys to manipulate the simulation. Specifically, we mapped user input to the rotation of the floor's Kinematic Body. By tilting the floor, the player alters the gravity vector relative to the ball, causing it to roll. The success/failure detection is based on a logic check every frame. If the ball's Y goes below -10 units, then its "dropping from the platform". If the ball's coordinate enters the radius of the target zone, then game triggers a success state. We set up Husky and lint-staged. Before any commit is allowed, our configuration runs eslint to check for syntax errors and prettier to enforce code style. If the code is messy or broken, the commit is blocked, ensuring the repo stays clean. We implemented a GitHub Actions workflow. Upon pushing to the main branch, the action spins up a container, runs our linting checks one last time, and then uses the actions/deploy-pages workflow to automatically publish the latest version of the game to GitHub Pages.
   
 ## Reflection
-We have decided on the mechanics of the game very smoothly. However, we all had a relatively hard time learning how Lua works because it is a new language for the whole team, and how to implement all the libraries that we need to use. There are several similar libraries, and sometimes some are deprecated and no longer being supported, so the tool lead has to find new libraries. The game gets tested by the test lead, who found some collision bugs and reported them for future correction.   
+We have decided on the mechanics of the game very smoothly. However, we all had a hard time deploying lua with the thirdparty 3D engine, so we decided to change it. We decided to use HTML5 and JavaScript. This seems to work better with our workflow and easier to use. We previously thought that Lua with Love2d will work with no problem, but now thinking back, there's a reason that there's a "2D" in the name. The game is a balance puzzle. A ball spawns on a platform that is subject to gravity. The "puzzle" element is navigating the ball around a flat surface without letting it slide off the edge due to gravity, requiring momentum management.
   
 # Devlog Entry - [11-13-2025]  
 - updated README.md  
