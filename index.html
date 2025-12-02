@@ -23,7 +23,7 @@
             background: rgba(0, 0, 0, 0.5);
             padding: 10px;
             border-radius: 4px;
-            max-width: 320px;
+            max-width: 340px;
         }
         #inventory-ui {
             position: absolute;
@@ -94,9 +94,7 @@
 </head>
 <body>
     <div id="ui-layer">
-        <div id="instructions">
-            <!-- Filled by JS per scene -->
-        </div>
+        <div id="instructions"></div>
     </div>
 
     <div id="inventory-ui">Inventory: (empty)</div>
@@ -121,11 +119,33 @@
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
-        // Scene groups
-        let menuGroup, roomAGroup, roomBGroup;
-        let currentScene = "menu"; // menu | roomA | roomB | ending
+        // Modes: menu | maze | puzzle | ending
+        let currentMode = "menu";
 
-        // Physics objects (Room B)
+        // Maze rooms: 3x3
+        const NUM_ROWS = 3;
+        const NUM_COLS = 3;
+        const CENTER_ROW = 1;
+        const CENTER_COL = 1;
+        const mazeRooms = []; // [row][col] = THREE.Group
+        let currentRoomRow = CENTER_ROW;
+        let currentRoomCol = CENTER_COL;
+
+        // When entering puzzle, remember which room we came from
+        let returnRoomRow = CENTER_ROW;
+        let returnRoomCol = CENTER_COL;
+
+        // Screen shake state
+        let shakeTime = 0;
+        let shakeDuration = 0;
+        let shakeIntensity = 0;
+        const cameraBasePosition = new THREE.Vector3();
+
+        // Groups for non-maze scenes
+        let menuGroup;
+        let puzzleGroup;
+
+        // Physics objects (puzzle)
         let ballMesh, ballBody;
         let floorMesh, floorBody;
         let targetMesh;
@@ -136,10 +156,13 @@
         const TARGET_RADIUS = 1.5;
 
         const inventory = new Set();
-        let collectedSmallRoomItems = 0;
-        const REQUIRED_SMALL_ROOM_ITEMS = 2; // ball + plate
         let hasKey = false;
         let gameActive = false;
+
+        // Random placement
+        let ballRoomCoord = null;
+        let plateRoomCoord = null;
+        let portalRoomCoord = null;
 
         init();
         animate();
@@ -150,10 +173,9 @@
             scene.background = new THREE.Color(0x202025);
             scene.fog = new THREE.Fog(0x202025, 10, 60);
 
-            // --- CAMERAS ---
             const aspect = window.innerWidth / window.innerHeight;
 
-            // Perspective camera (menu, puzzle room, ending)
+            // Perspective camera (menu, puzzle, ending)
             perspCamera = new THREE.PerspectiveCamera(
                 45,
                 aspect,
@@ -163,7 +185,7 @@
             perspCamera.position.set(0, 20, 25);
             perspCamera.lookAt(0, 0, 0);
 
-            // Orthographic camera (Room A)
+            // Orthographic camera (maze rooms)
             orthoCamera = new THREE.OrthographicCamera(
                 -viewSize * aspect,
                 viewSize * aspect,
@@ -176,7 +198,8 @@
             orthoCamera.lookAt(0, 0, 0);
             orthoCamera.up.set(0, 0, -1);
 
-            camera = perspCamera; // start with menu cam
+            camera = perspCamera;
+            cameraBasePosition.copy(camera.position);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -208,16 +231,24 @@
             );
             world.addContactMaterial(physicsContactMaterial);
 
-            // Scene groups
+            // Groups
             menuGroup = new THREE.Group();
-            roomAGroup = new THREE.Group();
-            roomBGroup = new THREE.Group();
-
             scene.add(menuGroup);
-            scene.add(roomAGroup);
-            scene.add(roomBGroup);
 
-            // --- MENU SCENE ---
+            // Maze rooms groups
+            for (let r = 0; r < NUM_ROWS; r++) {
+                mazeRooms[r] = [];
+                for (let c = 0; c < NUM_COLS; c++) {
+                    const g = new THREE.Group();
+                    mazeRooms[r][c] = g;
+                    scene.add(g);
+                }
+            }
+
+            puzzleGroup = new THREE.Group();
+            scene.add(puzzleGroup);
+
+            // --- MENU ---
             {
                 const startButtonGeo = new THREE.PlaneGeometry(6, 2);
                 const startButtonMat = new THREE.MeshBasicMaterial({
@@ -231,76 +262,155 @@
                 menuGroup.add(startButton);
             }
 
-            // --- ROOM A: Small point-and-click room ---
-            {
-                const floorGeoA = new THREE.BoxGeometry(12, 1, 12);
-                const floorMatA = new THREE.MeshStandardMaterial({ color: 0x444466 });
-                const floorA = new THREE.Mesh(floorGeoA, floorMatA);
-                floorA.receiveShadow = true;
-                floorA.position.y = 0;
-                roomAGroup.add(floorA);
+            // Helper: build basic room
+            function buildBasicRoom(group) {
+                const floorGeo = new THREE.BoxGeometry(12, 1, 12);
+                const floorMat = new THREE.MeshStandardMaterial({ color: 0x444466 });
+                const floor = new THREE.Mesh(floorGeo, floorMat);
+                floor.receiveShadow = true;
+                floor.position.y = 0;
+                group.add(floor);
 
-                // Low walls
-                const wallGeo = new THREE.BoxGeometry(12, 1.2, 0.5);
+                const wallGeoZ = new THREE.BoxGeometry(12, 1.2, 0.5);
+                const wallGeoX = new THREE.BoxGeometry(0.5, 1.2, 12);
                 const wallMat = new THREE.MeshStandardMaterial({ color: 0x222233 });
 
-                const backWall = new THREE.Mesh(wallGeo, wallMat);
+                const backWall = new THREE.Mesh(wallGeoZ, wallMat);
                 backWall.position.set(0, 0.6, -6);
-                roomAGroup.add(backWall);
+                group.add(backWall);
 
-                const frontWall = new THREE.Mesh(wallGeo, wallMat);
+                const frontWall = new THREE.Mesh(wallGeoZ, wallMat);
                 frontWall.position.set(0, 0.6, 6);
-                roomAGroup.add(frontWall);
+                group.add(frontWall);
 
-                const sideWallGeo = new THREE.BoxGeometry(0.5, 1.2, 12);
-                const leftWall = new THREE.Mesh(sideWallGeo, wallMat);
+                const leftWall = new THREE.Mesh(wallGeoX, wallMat);
                 leftWall.position.set(-6, 0.6, 0);
-                roomAGroup.add(leftWall);
+                group.add(leftWall);
 
-                const rightWall = new THREE.Mesh(sideWallGeo, wallMat);
+                const rightWall = new THREE.Mesh(wallGeoX, wallMat);
                 rightWall.position.set(6, 0.6, 0);
-                roomAGroup.add(rightWall);
+                group.add(rightWall);
+            }
 
-                // Item 1: Ball (inventory item)
-                const itemBallGeo = new THREE.SphereGeometry(0.6, 16, 16);
-                const itemBallMat = new THREE.MeshStandardMaterial({ color: 0xffcc00 });
-                const itemBall = new THREE.Mesh(itemBallGeo, itemBallMat);
-                itemBall.position.set(-2, 1, 0);
-                itemBall.castShadow = true;
-                itemBall.userData.type = "item";
-                itemBall.userData.itemId = "ball";
-                roomAGroup.add(itemBall);
+            // Build all maze rooms (geometry only)
+            for (let r = 0; r < NUM_ROWS; r++) {
+                for (let c = 0; c < NUM_COLS; c++) {
+                    buildBasicRoom(mazeRooms[r][c]);
+                }
+            }
 
-                // Item 2: Plate
+            // Add doors between adjacent rooms
+            const doorGeo = new THREE.BoxGeometry(2, 3, 0.5);
+            const doorMatMaze = new THREE.MeshStandardMaterial({ color: 0x64748b });
+
+            function addMazeDoor(group, direction, targetRow, targetCol) {
+                const door = new THREE.Mesh(doorGeo, doorMatMaze);
+                door.userData.type = "door";
+                door.userData.kind = "mazeDoor";
+                door.userData.row = targetRow;
+                door.userData.col = targetCol;
+
+                if (direction === "north") {
+                    door.position.set(0, 1.5, -5.75);
+                } else if (direction === "south") {
+                    door.position.set(0, 1.5, 5.75);
+                } else if (direction === "west") {
+                    door.rotation.y = Math.PI / 2;
+                    door.position.set(-5.75, 1.5, 0);
+                } else if (direction === "east") {
+                    door.rotation.y = Math.PI / 2;
+                    door.position.set(5.75, 1.5, 0);
+                }
+
+                group.add(door);
+            }
+
+            for (let r = 0; r < NUM_ROWS; r++) {
+                for (let c = 0; c < NUM_COLS; c++) {
+                    const g = mazeRooms[r][c];
+                    if (r > 0) addMazeDoor(g, "north", r - 1, c);
+                    if (r < NUM_ROWS - 1) addMazeDoor(g, "south", r + 1, c);
+                    if (c > 0) addMazeDoor(g, "west", r, c - 1);
+                    if (c < NUM_COLS - 1) addMazeDoor(g, "east", r, c + 1);
+                }
+            }
+
+            // --- Random placement of ball / plate / portal ---
+            const coords = [];
+            for (let r = 0; r < NUM_ROWS; r++) {
+                for (let c = 0; c < NUM_COLS; c++) {
+                    if (r === CENTER_ROW && c === CENTER_COL) continue;
+                    coords.push({ r, c });
+                }
+            }
+            shuffleArray(coords);
+            ballRoomCoord = coords[0];
+            plateRoomCoord = coords[1];
+            portalRoomCoord = coords[2];
+
+            // Place ball
+            {
+                const { r, c } = ballRoomCoord;
+                const group = mazeRooms[r][c];
+                const ballGeo = new THREE.SphereGeometry(0.6, 16, 16);
+                const ballMat = new THREE.MeshStandardMaterial({ color: 0xff4b4b });
+                const ball = new THREE.Mesh(ballGeo, ballMat);
+                ball.position.set(0, 1, 0);
+                ball.castShadow = true;
+                ball.userData.type = "item";
+                ball.userData.itemId = "ball";
+                group.add(ball);
+            }
+
+            // Place plate
+            {
+                const { r, c } = plateRoomCoord;
+                const group = mazeRooms[r][c];
                 const plateGeo = new THREE.CylinderGeometry(1.0, 1.0, 0.2, 32);
-                const plateMat = new THREE.MeshStandardMaterial({
-                    color: 0xffffff,
-                    metalness: 0.1,
-                    roughness: 0.7
-                });
+                const plateMat = new THREE.MeshStandardMaterial({ color: 0x4ade80 });
                 const plate = new THREE.Mesh(plateGeo, plateMat);
-                plate.position.set(2, 1, 0);
+                plate.position.set(0, 1, 0);
                 plate.castShadow = true;
                 plate.userData.type = "item";
                 plate.userData.itemId = "plate";
-                roomAGroup.add(plate);
-
-                // Door (both to puzzle and to final escape)
-                const doorGeo = new THREE.BoxGeometry(2, 4, 0.5);
-                const doorMat = new THREE.MeshStandardMaterial({ color: 0x8b5cf6 });
-                const doorA = new THREE.Mesh(doorGeo, doorMat);
-                doorA.position.set(0, 2, -5.9);
-                doorA.userData.type = "door";
-                roomAGroup.add(doorA);
+                group.add(plate);
             }
 
-            // --- ROOM B: Physics puzzle room ---
+            // Place locked portal door in portalRoom on an outer wall
+            {
+                const { r, c } = portalRoomCoord;
+                const group = mazeRooms[r][c];
+                const portalGeo = new THREE.BoxGeometry(2, 3, 0.5);
+                const portalMat = new THREE.MeshStandardMaterial({ color: 0x8b5cf6 });
+
+                const portalDoor = new THREE.Mesh(portalGeo, portalMat);
+                portalDoor.userData.type = "door";
+                portalDoor.userData.kind = "finalExit";
+                portalDoor.userData.target = "ending";
+
+                // choose an outer wall with no neighbour
+                if (r === 0) {
+                    portalDoor.position.set(0, 1.5, -5.75);
+                } else if (r === NUM_ROWS - 1) {
+                    portalDoor.position.set(0, 1.5, 5.75);
+                } else if (c === 0) {
+                    portalDoor.rotation.y = Math.PI / 2;
+                    portalDoor.position.set(-5.75, 1.5, 0);
+                } else {
+                    portalDoor.rotation.y = Math.PI / 2;
+                    portalDoor.position.set(5.75, 1.5, 0);
+                }
+
+                group.add(portalDoor);
+            }
+
+            // --- PUZZLE ROOM (same physics puzzle) ---
             {
                 const floorGeoB = new THREE.BoxGeometry(20, 1, 20);
                 const floorMatB = new THREE.MeshStandardMaterial({ color: 0x666644 });
                 floorMesh = new THREE.Mesh(floorGeoB, floorMatB);
                 floorMesh.receiveShadow = true;
-                roomBGroup.add(floorMesh);
+                puzzleGroup.add(floorMesh);
 
                 const floorShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
                 floorBody = new CANNON.Body({
@@ -311,13 +421,12 @@
                 floorBody.addShape(floorShape);
                 world.addBody(floorBody);
 
-                // Physics ball
                 const ballRadius = 0.8;
                 const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
                 const ballMat = new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.4 });
                 ballMesh = new THREE.Mesh(ballGeo, ballMat);
                 ballMesh.castShadow = true;
-                roomBGroup.add(ballMesh);
+                puzzleGroup.add(ballMesh);
 
                 const ballShape = new CANNON.Sphere(ballRadius);
                 ballBody = new CANNON.Body({
@@ -329,7 +438,6 @@
                 ballBody.linearDamping = 0.1;
                 world.addBody(ballBody);
 
-                // Target zone
                 const targetGeo = new THREE.CylinderGeometry(
                     TARGET_RADIUS,
                     TARGET_RADIUS,
@@ -346,7 +454,7 @@
                 floorMesh.add(targetMesh);
             }
 
-            // Event listeners
+            // Events
             window.addEventListener('resize', onWindowResize);
             window.addEventListener('pointerdown', onPointerDown);
             window.addEventListener('keydown', (e) => {
@@ -358,16 +466,61 @@
             });
 
             updateInventoryUI();
-            loadScene("menu");
+            loadMenu();
         }
 
-        // --- Scene / UI helpers ---
-        function loadScene(name) {
-            currentScene = name;
+        // --- Utility: shuffle array ---
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+        }
 
-            menuGroup.visible = (name === "menu");
-            roomAGroup.visible = (name === "roomA");
-            roomBGroup.visible = (name === "roomB");
+        // --- Screen shake helpers ---
+        function startScreenShake(duration = 0.4, intensity = 0.6) {
+            shakeDuration = duration;
+            shakeTime = duration;
+            shakeIntensity = intensity;
+            cameraBasePosition.copy(camera.position);
+        }
+
+        function updateScreenShake() {
+            if (shakeTime <= 0) return;
+
+            const progress = 1 - shakeTime / shakeDuration;
+            const damper = 1 - progress;
+
+            const offsetX = (Math.random() - 0.5) * 2 * shakeIntensity * damper;
+            const offsetY = (Math.random() - 0.5) * 2 * shakeIntensity * damper;
+
+            camera.position.set(
+                cameraBasePosition.x + offsetX,
+                cameraBasePosition.y + offsetY,
+                cameraBasePosition.z
+            );
+
+            shakeTime -= timeStep;
+            if (shakeTime <= 0) {
+                camera.position.copy(cameraBasePosition);
+            }
+        }
+
+        // --- Scene helpers ---
+        function hideAllRooms() {
+            for (let r = 0; r < NUM_ROWS; r++) {
+                for (let c = 0; c < NUM_COLS; c++) {
+                    mazeRooms[r][c].visible = false;
+                }
+            }
+            menuGroup.visible = false;
+            puzzleGroup.visible = false;
+        }
+
+        function loadMenu() {
+            currentMode = "menu";
+            hideAllRooms();
+            menuGroup.visible = true;
 
             const instr = document.getElementById('instructions');
             const startText = document.getElementById('start-text');
@@ -376,68 +529,106 @@
             statusEl.style.display = 'none';
             statusEl.className = '';
 
-            if (name === "menu") {
-                camera = perspCamera;
-                camera.position.set(0, 12, 15);
-                camera.lookAt(0, 10, 0);
+            camera = perspCamera;
+            camera.position.set(0, 12, 15);
+            camera.lookAt(0, 10, 0);
+            cameraBasePosition.copy(camera.position);
 
-                instr.style.display = 'none';
-                startText.style.display = 'block';
-                return;
-            }
+            instr.style.display = 'none';
+            startText.style.display = 'block';
+        }
+
+        function showMazeRoom(row, col) {
+            currentMode = "maze";
+            currentRoomRow = row;
+            currentRoomCol = col;
+
+            hideAllRooms();
+            mazeRooms[row][col].visible = true;
+
+            const instr = document.getElementById('instructions');
+            const startText = document.getElementById('start-text');
+            const statusEl = document.getElementById('status-msg');
 
             startText.style.display = 'none';
+            statusEl.style.display = 'none';
+            statusEl.className = '';
 
-            if (name === "roomA") {
-                camera = orthoCamera;
-                camera.position.set(0, 25, 0);
-                camera.lookAt(0, 0, 0);
-                camera.up.set(0, 0, -1);
+            camera = orthoCamera;
+            camera.position.set(0, 25, 0);
+            camera.lookAt(0, 0, 0);
+            camera.up.set(0, 0, -1);
+            cameraBasePosition.copy(camera.position);
 
-                instr.style.display = 'block';
+            instr.style.display = 'block';
+
+            const isCenter = (row === CENTER_ROW && col === CENTER_COL);
+
+            if (isCenter) {
                 instr.innerHTML = `
-                    <h2>Room 1: Collect & Escape</h2>
-                    <p>First, click the <b>ball</b> and <b>plate</b> to pick them up.</p>
-                    <p>Then click the <b>purple door</b> to attempt the gravity puzzle.</p>
-                    <p>After you earn a <b>key</b>, return here and click the door again to escape.</p>
+                    <h2>Central Room</h2>
+                    <p>You are in the <b>center</b> of a 3×3 maze.</p>
+                    <p>Somewhere in the maze lie a <b>ball</b>, a <b>plate</b>, and a <b>locked portal</b>.</p>
+                    <p>Explore with doors. Once you collect both items, you'll be dragged into a gravity puzzle.</p>
+                    <p>Beat the puzzle to get a <b>key</b>, then find the portal room and escape.</p>
                 `;
-                if (!hasKey) {
-                    showStatus("You wake up in a small room...");
-                } else {
-                    showStatus("You feel the key heavy in your pocket.");
-                }
-                return;
-            }
-
-            if (name === "roomB") {
-                camera = perspCamera;
-                camera.position.set(0, 20, 25);
-                camera.lookAt(0, 0, 0);
-
-                instr.style.display = 'block';
+            } else {
                 instr.innerHTML = `
-                    <h2>Room 2: Gravity Puzzle</h2>
-                    <p>Use <b>Arrow Keys</b> to tilt the floor and roll the ball to the <b>Green Zone</b>.</p>
-                    <p>Don't fall off! Press <b>R</b> to restart the puzzle.</p>
-                    <p>Beating the puzzle grants you a <b>key</b> and sends you back to Room 1.</p>
+                    <h2>Maze Room</h2>
+                    <p>This is one of the nine rooms in the maze.</p>
+                    <p>Click objects to interact, and doors to move to adjacent rooms.</p>
+                    <p>Remember: you need a <b>ball</b>, a <b>plate</b>, then clear the puzzle to find the final portal.</p>
                 `;
-                restartGame();
-                return;
-            }
-
-            if (name === "ending") {
-                instr.style.display = 'none';
-                showEnding();
-                return;
             }
         }
 
-        function showEnding() {
+        function loadPuzzleScene() {
+            currentMode = "puzzle";
+            hideAllRooms();
+            puzzleGroup.visible = true;
+
+            const instr = document.getElementById('instructions');
+            const startText = document.getElementById('start-text');
             const statusEl = document.getElementById('status-msg');
+
+            startText.style.display = 'none';
+            statusEl.style.display = 'none';
+            statusEl.className = '';
+
+            camera = perspCamera;
+            camera.position.set(0, 20, 25);
+            camera.lookAt(0, 0, 0);
+            cameraBasePosition.copy(camera.position);
+
+            instr.style.display = 'block';
+            instr.innerHTML = `
+                <h2>Gravity Puzzle Room</h2>
+                <p>Use <b>Arrow Keys</b> to tilt the floor and roll the ball into the <b>green zone</b>.</p>
+                <p>Don't fall off! Press <b>R</b> to restart the puzzle.</p>
+                <p>Win to receive a <b>key</b> and return to the maze.</p>
+            `;
+            restartGame();
+        }
+
+        function loadEnding() {
+            currentMode = "ending";
+            hideAllRooms();
+            const instr = document.getElementById('instructions');
+            const statusEl = document.getElementById('status-msg');
+            const startText = document.getElementById('start-text');
+
+            instr.style.display = 'none';
+            startText.style.display = 'none';
+
+            camera = perspCamera;
+            camera.position.set(0, 12, 15);
+            camera.lookAt(0, 0, 0);
+            cameraBasePosition.copy(camera.position);
+
             statusEl.style.display = 'block';
             statusEl.className = 'win';
-            statusEl.textContent = "You step through the door and escape!\nThanks for playing.";
-            showStatus("Fresh air hits your face as the door closes behind you...");
+            statusEl.textContent = "You step through the portal and escape the maze!\nThanks for playing.";
+            showStatus("The labyrinth dissolves behind you...", 3000);
         }
 
         function updateInventoryUI() {
@@ -471,12 +662,12 @@
             raycaster.setFromCamera(mouse, camera);
 
             let clickable = [];
-            if (currentScene === "menu") {
+            if (currentMode === "menu") {
                 clickable = menuGroup.children;
-            } else if (currentScene === "roomA") {
-                clickable = roomAGroup.children;
-            } else if (currentScene === "roomB") {
-                clickable = roomBGroup.children;
+            } else if (currentMode === "maze") {
+                clickable = mazeRooms[currentRoomRow][currentRoomCol].children;
+            } else if (currentMode === "puzzle") {
+                clickable = puzzleGroup.children;
             } else {
                 return;
             }
@@ -487,52 +678,63 @@
             const obj = hits[0].object;
 
             // MENU
-            if (currentScene === "menu" && obj.userData.type === "startGame") {
-                loadScene("roomA");
+            if (currentMode === "menu" && obj.userData.type === "startGame") {
+                showMazeRoom(CENTER_ROW, CENTER_COL);
                 return;
             }
 
-            // ROOM A: items + door
-            if (currentScene === "roomA") {
+            // MAZE
+            if (currentMode === "maze") {
                 if (obj.userData.type === "item") {
                     const id = obj.userData.itemId;
                     if (!inventory.has(id)) {
                         inventory.add(id);
-                        collectedSmallRoomItems++;
                         updateInventoryUI();
                         obj.visible = false;
                         showStatus("Picked up " + id + "!");
+                    }
+
+                    // If ball + plate collected and no key yet -> auto enter puzzle
+                    if (inventory.has("ball") && inventory.has("plate") && !hasKey) {
+                        // Remember current room to return here after puzzle
+                        returnRoomRow = currentRoomRow;
+                        returnRoomCol = currentRoomCol;
+
+                        // Trigger screen shake when the last item is collected
+                        startScreenShake(0.45, 0.8);
+
+                        showStatus("The floor trembles... you are dragged elsewhere!", 2000);
+                        setTimeout(() => {
+                            loadPuzzleScene();
+                        }, 800);
                     }
                     return;
                 }
 
                 if (obj.userData.type === "door") {
-                    if (!hasKey) {
-                        if (collectedSmallRoomItems < REQUIRED_SMALL_ROOM_ITEMS) {
-                            showStatus("You should collect everything before leaving.");
-                        } else {
-                            showStatus("You open the door and step into another chamber...");
-                            loadScene("roomB");
-                        }
-                    } else {
-                        // Already have key → this door is the final escape
-                        showStatus("You unlock the door with your key...");
-                        loadScene("ending");
-                    }
-                    return;
-                }
-            }
+                    const kind = obj.userData.kind || "mazeDoor";
 
-            // ROOM B: decoration only now
-            if (currentScene === "roomB") {
-                if (obj.userData.type === "decoration") {
-                    showStatus("Just a panel. The real test is the gravity puzzle.");
-                    return;
+                    if (kind === "mazeDoor") {
+                        const nr = obj.userData.row;
+                        const nc = obj.userData.col;
+                        showMazeRoom(nr, nc);
+                        return;
+                    }
+
+                    if (kind === "finalExit") {
+                        if (!hasKey) {
+                            showStatus("The portal is sealed. A key-shaped slot glows faintly.");
+                        } else {
+                            showStatus("You raise the key. The portal roars to life...");
+                            loadEnding();
+                        }
+                        return;
+                    }
                 }
             }
         }
 
-        // --- Puzzle control & physics (Room B only) ---
+        // --- Puzzle control & physics ---
         function restartGame() {
             if (!ballBody || !floorBody) return;
             gameActive = true;
@@ -549,7 +751,7 @@
         }
 
         function updatePhysics() {
-            if (currentScene !== "roomB") return;
+            if (currentMode !== "puzzle") return;
             if (!ballBody || !floorBody) return;
 
             if (gameActive) {
@@ -586,12 +788,10 @@
         }
 
         function checkWinCondition() {
-            // Fail: fall off
             if (ballBody.position.y < -10) {
                 endGame(false);
             }
 
-            // Win: reach target
             const dx = ballBody.position.x - TARGET_POS.x;
             const dz = ballBody.position.z - TARGET_POS.z;
             const dist = Math.sqrt(dx * dx + dz * dz);
@@ -614,12 +814,12 @@
                     hasKey = true;
                     inventory.add("key");
                     updateInventoryUI();
-                    showStatus("You feel a key appear in your hand.\nYou are sent back to the first room.", 2500);
+                    showStatus("A strange key appears in your hand.\nYou are pulled back into the maze.", 2500);
                 }
 
-                // After a short delay, send player back to Room 1
                 setTimeout(() => {
-                    loadScene("roomA");
+                    // Return to the room where the player collected the second item
+                    showMazeRoom(returnRoomRow, returnRoomCol);
                 }, 1500);
             } else {
                 statusEl.textContent = "FAILURE";
@@ -632,14 +832,12 @@
         function onWindowResize() {
             const aspect = window.innerWidth / window.innerHeight;
 
-            // Orthographic camera
             orthoCamera.left   = -viewSize * aspect;
             orthoCamera.right  =  viewSize * aspect;
             orthoCamera.top    =  viewSize;
             orthoCamera.bottom = -viewSize;
             orthoCamera.updateProjectionMatrix();
 
-            // Perspective camera
             perspCamera.aspect = aspect;
             perspCamera.updateProjectionMatrix();
 
@@ -649,6 +847,7 @@
         function animate() {
             requestAnimationFrame(animate);
             updatePhysics();
+            updateScreenShake();
             renderer.render(scene, camera);
         }
     </script>
