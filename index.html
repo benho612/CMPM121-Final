@@ -116,7 +116,7 @@
 
         // Cameras
         let perspCamera, orthoCamera, camera;
-        const viewSize = 15; // used for orthographic zoom
+        const viewSize = 15; // orthographic zoom
 
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
@@ -151,9 +151,9 @@
             scene.fog = new THREE.Fog(0x202025, 10, 60);
 
             // --- CAMERAS ---
-
-            // Perspective camera (Room B puzzle + menu + ending)
             const aspect = window.innerWidth / window.innerHeight;
+
+            // Perspective camera (menu, puzzle room, ending)
             perspCamera = new THREE.PerspectiveCamera(
                 45,
                 aspect,
@@ -163,7 +163,7 @@
             perspCamera.position.set(0, 20, 25);
             perspCamera.lookAt(0, 0, 0);
 
-            // Orthographic camera (Room A point-and-click)
+            // Orthographic camera (Room A)
             orthoCamera = new THREE.OrthographicCamera(
                 -viewSize * aspect,
                 viewSize * aspect,
@@ -176,8 +176,7 @@
             orthoCamera.lookAt(0, 0, 0);
             orthoCamera.up.set(0, 0, -1);
 
-            // Start with perspective (menu)
-            camera = perspCamera;
+            camera = perspCamera; // start with menu cam
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -241,7 +240,7 @@
                 floorA.position.y = 0;
                 roomAGroup.add(floorA);
 
-                // Low walls so top-down view isn't blocked
+                // Low walls
                 const wallGeo = new THREE.BoxGeometry(12, 1.2, 0.5);
                 const wallMat = new THREE.MeshStandardMaterial({ color: 0x222233 });
 
@@ -286,15 +285,13 @@
                 plate.userData.itemId = "plate";
                 roomAGroup.add(plate);
 
-                // Door to puzzle room
+                // Door (both to puzzle and to final escape)
                 const doorGeo = new THREE.BoxGeometry(2, 4, 0.5);
                 const doorMat = new THREE.MeshStandardMaterial({ color: 0x8b5cf6 });
-                const doorAtoB = new THREE.Mesh(doorGeo, doorMat);
-                doorAtoB.position.set(0, 2, -5.9);
-                doorAtoB.userData.type = "door";
-                doorAtoB.userData.nextScene = "roomB";
-                doorAtoB.userData.lockedReason = "You feel you should collect everything first.";
-                roomAGroup.add(doorAtoB);
+                const doorA = new THREE.Mesh(doorGeo, doorMat);
+                doorA.position.set(0, 2, -5.9);
+                doorA.userData.type = "door";
+                roomAGroup.add(doorA);
             }
 
             // --- ROOM B: Physics puzzle room ---
@@ -347,14 +344,6 @@
                 targetMesh = new THREE.Mesh(targetGeo, targetMat);
                 targetMesh.position.set(TARGET_POS.x, 0.6, TARGET_POS.z);
                 floorMesh.add(targetMesh);
-
-                // Exit door (requires key)
-                const doorGeo2 = new THREE.BoxGeometry(2, 4, 0.5);
-                const doorMat2 = new THREE.MeshStandardMaterial({ color: 0xf87171 });
-                const exitDoor = new THREE.Mesh(doorGeo2, doorMat2);
-                exitDoor.position.set(9.5, 2, 0);
-                exitDoor.userData.type = "exitDoor";
-                roomBGroup.add(exitDoor);
             }
 
             // Event listeners
@@ -407,11 +396,16 @@
 
                 instr.style.display = 'block';
                 instr.innerHTML = `
-                    <h2>Room 1: Collect Items</h2>
-                    <p>Click the <b>ball</b> and <b>plate</b> to pick them up.</p>
-                    <p>Then click the <b>purple door</b> to enter the next room.</p>
+                    <h2>Room 1: Collect & Escape</h2>
+                    <p>First, click the <b>ball</b> and <b>plate</b> to pick them up.</p>
+                    <p>Then click the <b>purple door</b> to attempt the gravity puzzle.</p>
+                    <p>After you earn a <b>key</b>, return here and click the door again to escape.</p>
                 `;
-                showStatus("You wake up in a small room...");
+                if (!hasKey) {
+                    showStatus("You wake up in a small room...");
+                } else {
+                    showStatus("You feel the key heavy in your pocket.");
+                }
                 return;
             }
 
@@ -425,7 +419,7 @@
                     <h2>Room 2: Gravity Puzzle</h2>
                     <p>Use <b>Arrow Keys</b> to tilt the floor and roll the ball to the <b>Green Zone</b>.</p>
                     <p>Don't fall off! Press <b>R</b> to restart the puzzle.</p>
-                    <p>Success gives you a <b>key</b>. Click the <b>red door</b> to escape.</p>
+                    <p>Beating the puzzle grants you a <b>key</b> and sends you back to Room 1.</p>
                 `;
                 restartGame();
                 return;
@@ -442,8 +436,8 @@
             const statusEl = document.getElementById('status-msg');
             statusEl.style.display = 'block';
             statusEl.className = 'win';
-            statusEl.textContent = "You escaped the facility!\nThanks for playing.";
-            showStatus("The door slams shut behind you...");
+            statusEl.textContent = "You step through the door and escape!\nThanks for playing.";
+            showStatus("Fresh air hits your face as the door closes behind you...");
         }
 
         function updateInventoryUI() {
@@ -513,24 +507,26 @@
                 }
 
                 if (obj.userData.type === "door") {
-                    if (collectedSmallRoomItems < REQUIRED_SMALL_ROOM_ITEMS) {
-                        showStatus(obj.userData.lockedReason || "The door won't budge yet.");
+                    if (!hasKey) {
+                        if (collectedSmallRoomItems < REQUIRED_SMALL_ROOM_ITEMS) {
+                            showStatus("You should collect everything before leaving.");
+                        } else {
+                            showStatus("You open the door and step into another chamber...");
+                            loadScene("roomB");
+                        }
                     } else {
-                        showStatus("You open the door and step through...");
-                        loadScene(obj.userData.nextScene);
+                        // Already have key → this door is the final escape
+                        showStatus("You unlock the door with your key...");
+                        loadScene("ending");
                     }
                     return;
                 }
             }
 
-            // ROOM B: exit door
+            // ROOM B: decoration only now
             if (currentScene === "roomB") {
-                if (obj.userData.type === "exitDoor") {
-                    if (!hasKey) {
-                        showStatus("It's locked. Maybe the puzzle gives you a key?");
-                    } else {
-                        loadScene("ending");
-                    }
+                if (obj.userData.type === "decoration") {
+                    showStatus("Just a panel. The real test is the gravity puzzle.");
                     return;
                 }
             }
@@ -618,8 +614,13 @@
                     hasKey = true;
                     inventory.add("key");
                     updateInventoryUI();
-                    showStatus("You feel a key appear in your hand.");
+                    showStatus("You feel a key appear in your hand.\nYou are sent back to the first room.", 2500);
                 }
+
+                // After a short delay, send player back to Room 1
+                setTimeout(() => {
+                    loadScene("roomA");
+                }, 1500);
             } else {
                 statusEl.textContent = "FAILURE";
                 statusEl.className = 'lose';
