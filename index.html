@@ -1,11 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>F1 Prototype: Gravity Tilt</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>F2 Prototype: Gravity Escape</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: 'Courier New', Courier, monospace; background-color: #111; }
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #111;
+        }
         #ui-layer {
             position: absolute;
             top: 20px;
@@ -14,25 +19,68 @@
             pointer-events: none;
             z-index: 10;
         }
+        #instructions {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 4px;
+            max-width: 320px;
+        }
+        #inventory-ui {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 10;
+        }
         #status-msg {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 48px;
+            font-size: 40px;
             font-weight: bold;
             display: none;
             text-shadow: 2px 2px 0 #000;
             text-align: center;
+            z-index: 20;
+            white-space: pre-line;
         }
         .win { color: #4ade80; }
         .lose { color: #f87171; }
-        #instructions {
-            background: rgba(0, 0, 0, 0.5);
-            padding: 10px;
+
+        #start-text {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 32px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+            pointer-events: none;
+            display: none;
+            z-index: 10;
+        }
+
+        #message {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 12px;
             border-radius: 4px;
+            font-size: 16px;
+            display: none;
+            z-index: 15;
         }
     </style>
+
     <!-- Import Maps for Three.js and Cannon-es -->
     <script type="importmap">
         {
@@ -47,135 +95,96 @@
 <body>
     <div id="ui-layer">
         <div id="instructions">
-            <h2>Gravity Tilt</h2>
-            <p>Use <b>Arrow Keys</b> to tilt the floor.</p>
-            <p>Get the ball to the <b>Green Zone</b>.</p>
-            <p>Don't fall off!</p>
-            <p><small>Press R to Restart</small></p>
+            <!-- Filled by JS per scene -->
         </div>
     </div>
+
+    <div id="inventory-ui">Inventory: (empty)</div>
     <div id="status-msg"></div>
+    <div id="message"></div>
 
-    <div id="start-text" 
-        style="
-            position:absolute;
-            top:40%;
-            left:50%;
-            transform:translate(-50%, -50%);
-            color:white;
-            font-size:32px;
-            font-weight:bold;
-            text-shadow:2px 2px 4px #000;
-            pointer-events:none;
-            display:none;
-        ">
-        START GAME ↓
-    </div>
-
+    <div id="start-text">START GAME ↓</div>
 
     <script type="module">
         import * as THREE from 'three';
         import * as CANNON from 'cannon-es';
 
         // --- Global Variables ---
-        let scene, camera, renderer;
+        let scene, renderer;
         let world;
-        let timeStep = 1 / 60;
-        let lastCallTime;
-        let gameActive = true;
+        const timeStep = 1 / 60;
 
-        // Interaction
+        // Cameras
+        let perspCamera, orthoCamera, camera;
+        const viewSize = 15; // used for orthographic zoom
+
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
+        // Scene groups
+        let menuGroup, roomAGroup, roomBGroup;
+        let currentScene = "menu"; // menu | roomA | roomB | ending
 
-        // Meshes and Bodies
+        // Physics objects (Room B)
         let ballMesh, ballBody;
         let floorMesh, floorBody;
-        let targetMesh; // Visual only, simplified logic
+        let targetMesh;
 
-        // --- Scene System ---
-        let currentScene = "menu"; // menu | roomA | roomB | ending
-        let menuGroup, roomAGroup, roomBGroup;
-
-        function loadScene(name) {
-            currentScene = name;
-
-            // Hide all rooms
-            roomAGroup.visible = false;
-            roomBGroup.visible = false;
-            menuGroup.visible = false;
-
-            // Hide / show UI
-            document.getElementById("instructions").style.display = "none";
-            document.getElementById("start-text").style.display = "none";
-
-            // === MENU ===
-            if (name === "menu") {
-                menuGroup.visible = true;
-                document.getElementById("start-text").style.display = "block";
-
-                camera.position.set(0, 12, 15);
-                camera.lookAt(0, 10, 0);
-
-                return; // IMPORTANT: stop here so other camera resets do NOT run
-            }
-
-            // === ROOM A ===
-            if (name === "roomA") {
-                roomAGroup.visible = true;
-                document.getElementById("instructions").style.display = "block";
-
-                camera.position.set(0, 20, 25);
-                camera.lookAt(0, 0, 0);
-
-                return;
-            }
-
-            // === ROOM B ===
-            if (name === "roomB") {
-                roomBGroup.visible = true;
-
-                camera.position.set(0, 15, 25);
-                camera.lookAt(0, 0, 0);
-
-                return;
-            }
-
-            // === ENDING ===
-            if (name === "ending") {
-                // add later
-                return;
-            }
-        }
-
-
-
-        // Game State
+        // Game state / inventory
         const keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
         const TARGET_POS = { x: 8, z: 8 };
         const TARGET_RADIUS = 1.5;
+
+        const inventory = new Set();
+        let collectedSmallRoomItems = 0;
+        const REQUIRED_SMALL_ROOM_ITEMS = 2; // ball + plate
+        let hasKey = false;
+        let gameActive = false;
 
         init();
         animate();
 
         function init() {
-            // 1. THREE.JS SETUP
+            // THREE.js setup
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x202025);
-            scene.fog = new THREE.Fog(0x202025, 10, 50);
+            scene.fog = new THREE.Fog(0x202025, 10, 60);
 
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-            camera.position.set(0, 20, 25);
-            camera.lookAt(0, 0, 0);
+            // --- CAMERAS ---
+
+            // Perspective camera (Room B puzzle + menu + ending)
+            const aspect = window.innerWidth / window.innerHeight;
+            perspCamera = new THREE.PerspectiveCamera(
+                45,
+                aspect,
+                0.1,
+                100
+            );
+            perspCamera.position.set(0, 20, 25);
+            perspCamera.lookAt(0, 0, 0);
+
+            // Orthographic camera (Room A point-and-click)
+            orthoCamera = new THREE.OrthographicCamera(
+                -viewSize * aspect,
+                viewSize * aspect,
+                viewSize,
+                -viewSize,
+                0.1,
+                100
+            );
+            orthoCamera.position.set(0, 25, 0);
+            orthoCamera.lookAt(0, 0, 0);
+            orthoCamera.up.set(0, 0, -1);
+
+            // Start with perspective (menu)
+            camera = perspCamera;
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.shadowMap.enabled = true;
             document.body.appendChild(renderer.domElement);
 
-            // Lights
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
             scene.add(ambientLight);
 
             const dirLight = new THREE.DirectionalLight(0xffffff, 1);
@@ -187,21 +196,20 @@
             dirLight.shadow.camera.right = 20;
             scene.add(dirLight);
 
-            // 2. CANNON-ES SETUP
+            // CANNON World
             world = new CANNON.World({
-                gravity: new CANNON.Vec3(0, -9.82, 0), // Earth gravity
+                gravity: new CANNON.Vec3(0, -9.82, 0)
             });
 
-            // Materials
             const physicsMaterial = new CANNON.Material('physics');
             const physicsContactMaterial = new CANNON.ContactMaterial(
-                physicsMaterial, physicsMaterial, { friction: 0.5, restitution: 0.3 }
+                physicsMaterial,
+                physicsMaterial,
+                { friction: 0.5, restitution: 0.3 }
             );
             world.addContactMaterial(physicsContactMaterial);
 
-
-            // --- ROOM GROUPS ---
-            // We attach objects to these groups so we can turn rooms on/off easily
+            // Scene groups
             menuGroup = new THREE.Group();
             roomAGroup = new THREE.Group();
             roomBGroup = new THREE.Group();
@@ -210,227 +218,387 @@
             scene.add(roomAGroup);
             scene.add(roomBGroup);
 
-
-            // MENU SCENE (TITLE SCREEN)
+            // --- MENU SCENE ---
             {
-
                 const startButtonGeo = new THREE.PlaneGeometry(6, 2);
-                const startButtonMat = new THREE.MeshBasicMaterial({ 
+                const startButtonMat = new THREE.MeshBasicMaterial({
                     color: 0x44ff88,
-                    side: THREE.DoubleSide    // important!
+                    side: THREE.DoubleSide
                 });
-
                 const startButton = new THREE.Mesh(startButtonGeo, startButtonMat);
-
-                // Put menu in FRONT of the camera
                 startButton.position.set(0, 10, 0);
-
-                // Rotate so it faces the camera properly
-                startButton.rotation.x = -Math.PI / 4; 
+                startButton.rotation.x = -Math.PI / 4;
                 startButton.userData.type = "startGame";
-
                 menuGroup.add(startButton);
             }
 
-
-
-
-            // ------------------------------
-            // ROOM A  (Puzzle Room)
-            // ------------------------------
+            // --- ROOM A: Small point-and-click room ---
             {
+                const floorGeoA = new THREE.BoxGeometry(12, 1, 12);
+                const floorMatA = new THREE.MeshStandardMaterial({ color: 0x444466 });
+                const floorA = new THREE.Mesh(floorGeoA, floorMatA);
+                floorA.receiveShadow = true;
+                floorA.position.y = 0;
+                roomAGroup.add(floorA);
 
-                // const floorGeoA = new THREE.BoxGeometry(20, 1, 20);
-                // const floorMatA = new THREE.MeshStandardMaterial({ color: 0x444466 });
-                // const floorA = new THREE.Mesh(floorGeoA, floorMatA);
-                // floorA.receiveShadow = true;
-                // roomAGroup.add(floorA);
+                // Low walls so top-down view isn't blocked
+                const wallGeo = new THREE.BoxGeometry(12, 1.2, 0.5);
+                const wallMat = new THREE.MeshStandardMaterial({ color: 0x222233 });
 
-                // Door to Room B (visual only for now)
+                const backWall = new THREE.Mesh(wallGeo, wallMat);
+                backWall.position.set(0, 0.6, -6);
+                roomAGroup.add(backWall);
+
+                const frontWall = new THREE.Mesh(wallGeo, wallMat);
+                frontWall.position.set(0, 0.6, 6);
+                roomAGroup.add(frontWall);
+
+                const sideWallGeo = new THREE.BoxGeometry(0.5, 1.2, 12);
+                const leftWall = new THREE.Mesh(sideWallGeo, wallMat);
+                leftWall.position.set(-6, 0.6, 0);
+                roomAGroup.add(leftWall);
+
+                const rightWall = new THREE.Mesh(sideWallGeo, wallMat);
+                rightWall.position.set(6, 0.6, 0);
+                roomAGroup.add(rightWall);
+
+                // Item 1: Ball (inventory item)
+                const itemBallGeo = new THREE.SphereGeometry(0.6, 16, 16);
+                const itemBallMat = new THREE.MeshStandardMaterial({ color: 0xffcc00 });
+                const itemBall = new THREE.Mesh(itemBallGeo, itemBallMat);
+                itemBall.position.set(-2, 1, 0);
+                itemBall.castShadow = true;
+                itemBall.userData.type = "item";
+                itemBall.userData.itemId = "ball";
+                roomAGroup.add(itemBall);
+
+                // Item 2: Plate
+                const plateGeo = new THREE.CylinderGeometry(1.0, 1.0, 0.2, 32);
+                const plateMat = new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
+                    metalness: 0.1,
+                    roughness: 0.7
+                });
+                const plate = new THREE.Mesh(plateGeo, plateMat);
+                plate.position.set(2, 1, 0);
+                plate.castShadow = true;
+                plate.userData.type = "item";
+                plate.userData.itemId = "plate";
+                roomAGroup.add(plate);
+
+                // Door to puzzle room
                 const doorGeo = new THREE.BoxGeometry(2, 4, 0.5);
                 const doorMat = new THREE.MeshStandardMaterial({ color: 0x8b5cf6 });
                 const doorAtoB = new THREE.Mesh(doorGeo, doorMat);
-                doorAtoB.position.set(9, 2, 0);
+                doorAtoB.position.set(0, 2, -5.9);
                 doorAtoB.userData.type = "door";
                 doorAtoB.userData.nextScene = "roomB";
+                doorAtoB.userData.lockedReason = "You feel you should collect everything first.";
                 roomAGroup.add(doorAtoB);
             }
 
-
-            // ------------------------------
-            // ROOM B  
-            // ------------------------------
+            // --- ROOM B: Physics puzzle room ---
             {
                 const floorGeoB = new THREE.BoxGeometry(20, 1, 20);
                 const floorMatB = new THREE.MeshStandardMaterial({ color: 0x666644 });
-                const floorB = new THREE.Mesh(floorGeoB, floorMatB);
-                floorB.receiveShadow = true;
-                roomBGroup.add(floorB);
+                floorMesh = new THREE.Mesh(floorGeoB, floorMatB);
+                floorMesh.receiveShadow = true;
+                roomBGroup.add(floorMesh);
 
-                // Door back to Room A
+                const floorShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
+                floorBody = new CANNON.Body({
+                    mass: 0,
+                    type: CANNON.Body.KINEMATIC,
+                    material: physicsMaterial
+                });
+                floorBody.addShape(floorShape);
+                world.addBody(floorBody);
+
+                // Physics ball
+                const ballRadius = 0.8;
+                const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
+                const ballMat = new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.4 });
+                ballMesh = new THREE.Mesh(ballGeo, ballMat);
+                ballMesh.castShadow = true;
+                roomBGroup.add(ballMesh);
+
+                const ballShape = new CANNON.Sphere(ballRadius);
+                ballBody = new CANNON.Body({
+                    mass: 5,
+                    shape: ballShape,
+                    material: physicsMaterial
+                });
+                ballBody.position.set(-5, 5, -5);
+                ballBody.linearDamping = 0.1;
+                world.addBody(ballBody);
+
+                // Target zone
+                const targetGeo = new THREE.CylinderGeometry(
+                    TARGET_RADIUS,
+                    TARGET_RADIUS,
+                    0.1,
+                    32
+                );
+                const targetMat = new THREE.MeshBasicMaterial({
+                    color: 0x4ade80,
+                    opacity: 0.5,
+                    transparent: true
+                });
+                targetMesh = new THREE.Mesh(targetGeo, targetMat);
+                targetMesh.position.set(TARGET_POS.x, 0.6, TARGET_POS.z);
+                floorMesh.add(targetMesh);
+
+                // Exit door (requires key)
                 const doorGeo2 = new THREE.BoxGeometry(2, 4, 0.5);
                 const doorMat2 = new THREE.MeshStandardMaterial({ color: 0xf87171 });
-                const doorBtoA = new THREE.Mesh(doorGeo2, doorMat2);
-                doorBtoA.position.set(-9, 2, 0);
-                doorBtoA.userData.type = "door";
-                doorBtoA.userData.nextScene = "roomA";
-                roomBGroup.add(doorBtoA);
+                const exitDoor = new THREE.Mesh(doorGeo2, doorMat2);
+                exitDoor.position.set(9.5, 2, 0);
+                exitDoor.userData.type = "exitDoor";
+                roomBGroup.add(exitDoor);
             }
 
-
-
-            // --- GAME OBJECTS ---
-
-            // A. The Floor (Kinematic Body so we can rotate it)
-            const floorGeo = new THREE.BoxGeometry(20, 1, 20);
-            const floorMat = new THREE.MeshStandardMaterial({ color: 0x555566 });
-            floorMesh = new THREE.Mesh(floorGeo, floorMat);
-            floorMesh.receiveShadow = true;
-            roomAGroup.add(floorMesh);
-
-
-            const floorShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
-            floorBody = new CANNON.Body({
-                mass: 0, // Mass 0 = Static/Kinematic
-                type: CANNON.Body.KINEMATIC,
-                material: physicsMaterial
-            });
-            floorBody.addShape(floorShape);
-            world.addBody(floorBody);
-
-            // B. The Ball
-            const ballRadius = 0.8;
-            const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
-            const ballMat = new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.4 });
-            ballMesh = new THREE.Mesh(ballGeo, ballMat);
-            ballMesh.castShadow = true;
-            roomAGroup.add(ballMesh);
-
-
-            const ballShape = new CANNON.Sphere(ballRadius);
-            ballBody = new CANNON.Body({
-                mass: 5,
-                shape: ballShape,
-                material: physicsMaterial
-            });
-            ballBody.position.set(-5, 5, -5); // Start position
-            ballBody.linearDamping = 0.1;
-            world.addBody(ballBody);
-
-            // C. Target Zone (Visual)
-            const targetGeo = new THREE.CylinderGeometry(TARGET_RADIUS, TARGET_RADIUS, 0.1, 32);
-            const targetMat = new THREE.MeshBasicMaterial({ color: 0x4ade80, opacity: 0.5, transparent: true });
-            targetMesh = new THREE.Mesh(targetGeo, targetMat);
-            targetMesh.position.set(TARGET_POS.x, 0.6, TARGET_POS.z);
-            floorMesh.add(targetMesh); // Child of floor so it rotates with it
-
-            // Event Listeners
+            // Event listeners
             window.addEventListener('resize', onWindowResize);
+            window.addEventListener('pointerdown', onPointerDown);
             window.addEventListener('keydown', (e) => {
-                if(keys.hasOwnProperty(e.key)) keys[e.key] = true;
-                if(e.key.toLowerCase() === 'r') restartGame();
+                if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+                if (e.key.toLowerCase() === 'r') restartGame();
             });
             window.addEventListener('keyup', (e) => {
-                if(keys.hasOwnProperty(e.key)) keys[e.key] = false;
+                if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
             });
-            window.addEventListener('pointerdown', onPointerDown);
 
+            updateInventoryUI();
             loadScene("menu");
         }
 
-        function onPointerDown(event) {
-            if (currentScene !== "menu") return;
+        // --- Scene / UI helpers ---
+        function loadScene(name) {
+            currentScene = name;
 
-            // Convert to NDC
+            menuGroup.visible = (name === "menu");
+            roomAGroup.visible = (name === "roomA");
+            roomBGroup.visible = (name === "roomB");
+
+            const instr = document.getElementById('instructions');
+            const startText = document.getElementById('start-text');
+            const statusEl = document.getElementById('status-msg');
+
+            statusEl.style.display = 'none';
+            statusEl.className = '';
+
+            if (name === "menu") {
+                camera = perspCamera;
+                camera.position.set(0, 12, 15);
+                camera.lookAt(0, 10, 0);
+
+                instr.style.display = 'none';
+                startText.style.display = 'block';
+                return;
+            }
+
+            startText.style.display = 'none';
+
+            if (name === "roomA") {
+                camera = orthoCamera;
+                camera.position.set(0, 25, 0);
+                camera.lookAt(0, 0, 0);
+                camera.up.set(0, 0, -1);
+
+                instr.style.display = 'block';
+                instr.innerHTML = `
+                    <h2>Room 1: Collect Items</h2>
+                    <p>Click the <b>ball</b> and <b>plate</b> to pick them up.</p>
+                    <p>Then click the <b>purple door</b> to enter the next room.</p>
+                `;
+                showStatus("You wake up in a small room...");
+                return;
+            }
+
+            if (name === "roomB") {
+                camera = perspCamera;
+                camera.position.set(0, 20, 25);
+                camera.lookAt(0, 0, 0);
+
+                instr.style.display = 'block';
+                instr.innerHTML = `
+                    <h2>Room 2: Gravity Puzzle</h2>
+                    <p>Use <b>Arrow Keys</b> to tilt the floor and roll the ball to the <b>Green Zone</b>.</p>
+                    <p>Don't fall off! Press <b>R</b> to restart the puzzle.</p>
+                    <p>Success gives you a <b>key</b>. Click the <b>red door</b> to escape.</p>
+                `;
+                restartGame();
+                return;
+            }
+
+            if (name === "ending") {
+                instr.style.display = 'none';
+                showEnding();
+                return;
+            }
+        }
+
+        function showEnding() {
+            const statusEl = document.getElementById('status-msg');
+            statusEl.style.display = 'block';
+            statusEl.className = 'win';
+            statusEl.textContent = "You escaped the facility!\nThanks for playing.";
+            showStatus("The door slams shut behind you...");
+        }
+
+        function updateInventoryUI() {
+            const invEl = document.getElementById('inventory-ui');
+            if (!invEl) return;
+            if (inventory.size === 0) {
+                invEl.textContent = 'Inventory: (empty)';
+            } else {
+                invEl.textContent = 'Inventory: ' + Array.from(inventory).join(', ');
+            }
+        }
+
+        function showStatus(text, timeout = 2000) {
+            const msgEl = document.getElementById('message');
+            if (!msgEl) return;
+            msgEl.textContent = text;
+            msgEl.style.display = 'block';
+            if (timeout > 0) {
+                clearTimeout(showStatus._timeoutId);
+                showStatus._timeoutId = setTimeout(() => {
+                    msgEl.style.display = 'none';
+                }, timeout);
+            }
+        }
+
+        // --- Input / interaction ---
+        function onPointerDown(event) {
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
             raycaster.setFromCamera(mouse, camera);
 
-            // Check menuGroup objects
-            const hits = raycaster.intersectObjects(menuGroup.children, true);
+            let clickable = [];
+            if (currentScene === "menu") {
+                clickable = menuGroup.children;
+            } else if (currentScene === "roomA") {
+                clickable = roomAGroup.children;
+            } else if (currentScene === "roomB") {
+                clickable = roomBGroup.children;
+            } else {
+                return;
+            }
 
-            if (hits.length > 0) {
-                const obj = hits[0].object;
+            const hits = raycaster.intersectObjects(clickable, true);
+            if (hits.length === 0) return;
 
-                if (obj.userData.type === "startGame") {
-                    loadScene("roomA");
+            const obj = hits[0].object;
+
+            // MENU
+            if (currentScene === "menu" && obj.userData.type === "startGame") {
+                loadScene("roomA");
+                return;
+            }
+
+            // ROOM A: items + door
+            if (currentScene === "roomA") {
+                if (obj.userData.type === "item") {
+                    const id = obj.userData.itemId;
+                    if (!inventory.has(id)) {
+                        inventory.add(id);
+                        collectedSmallRoomItems++;
+                        updateInventoryUI();
+                        obj.visible = false;
+                        showStatus("Picked up " + id + "!");
+                    }
+                    return;
+                }
+
+                if (obj.userData.type === "door") {
+                    if (collectedSmallRoomItems < REQUIRED_SMALL_ROOM_ITEMS) {
+                        showStatus(obj.userData.lockedReason || "The door won't budge yet.");
+                    } else {
+                        showStatus("You open the door and step through...");
+                        loadScene(obj.userData.nextScene);
+                    }
+                    return;
+                }
+            }
+
+            // ROOM B: exit door
+            if (currentScene === "roomB") {
+                if (obj.userData.type === "exitDoor") {
+                    if (!hasKey) {
+                        showStatus("It's locked. Maybe the puzzle gives you a key?");
+                    } else {
+                        loadScene("ending");
+                    }
+                    return;
                 }
             }
         }
 
-
+        // --- Puzzle control & physics (Room B only) ---
         function restartGame() {
+            if (!ballBody || !floorBody) return;
             gameActive = true;
-            
-            // Reset Ball
+
             ballBody.position.set(-5, 5, -5);
             ballBody.velocity.set(0, 0, 0);
             ballBody.angularVelocity.set(0, 0, 0);
-            
-            // Reset Floor
+
             floorBody.quaternion.setFromEuler(0, 0, 0);
-            
-            // Reset UI
+
             const statusEl = document.getElementById('status-msg');
             statusEl.style.display = 'none';
             statusEl.className = '';
         }
 
         function updatePhysics() {
-            if (currentScene !== "roomA") return;
+            if (currentScene !== "roomB") return;
+            if (!ballBody || !floorBody) return;
 
-            if (!gameActive) return;
+            if (gameActive) {
+                const maxTilt = 0.3;
 
-            // 1. Input Handling -> Tilt Floor
-            const tiltSpeed = 0.02;
-            const maxTilt = 0.3;
-            
-            // We manipulate the quaternion directly or Euler angles
-            // Current rotation
-            const currentEuler = new CANNON.Vec3();
-            floorBody.quaternion.toEuler(currentEuler);
+                const currentEuler = new CANNON.Vec3();
+                floorBody.quaternion.toEuler(currentEuler);
 
-            // Desired changes based on keys
-            let targetX = 0;
-            let targetZ = 0;
+                let targetX = 0;
+                let targetZ = 0;
 
-            if (keys.ArrowUp) targetX = -maxTilt;
-            if (keys.ArrowDown) targetX = maxTilt;
-            if (keys.ArrowLeft) targetZ = maxTilt;
-            if (keys.ArrowRight) targetZ = -maxTilt;
+                if (keys.ArrowUp) targetX = -maxTilt;
+                if (keys.ArrowDown) targetX = maxTilt;
+                if (keys.ArrowLeft) targetZ = maxTilt;
+                if (keys.ArrowRight) targetZ = -maxTilt;
 
-            // Lerp towards target rotation for smoothness
-            currentEuler.x += (targetX - currentEuler.x) * 0.05;
-            currentEuler.z += (targetZ - currentEuler.z) * 0.05;
+                currentEuler.x += (targetX - currentEuler.x) * 0.05;
+                currentEuler.z += (targetZ - currentEuler.z) * 0.05;
 
-            floorBody.quaternion.setFromEuler(currentEuler.x, 0, currentEuler.z);
+                floorBody.quaternion.setFromEuler(currentEuler.x, 0, currentEuler.z);
+            }
 
-            // 2. Step Physics
             world.step(timeStep);
 
-            // 3. Copy Coords from Cannon to Three
             ballMesh.position.copy(ballBody.position);
             ballMesh.quaternion.copy(ballBody.quaternion);
-            
+
             floorMesh.position.copy(floorBody.position);
             floorMesh.quaternion.copy(floorBody.quaternion);
 
-            // 4. Win/Loss Logic
-            checkWinCondition();
+            if (gameActive) {
+                checkWinCondition();
+            }
         }
 
         function checkWinCondition() {
-            // Check Fall (Loss)
+            // Fail: fall off
             if (ballBody.position.y < -10) {
                 endGame(false);
             }
 
-            // Check Target (Win)
-            // Calculate distance on XZ plane
+            // Win: reach target
             const dx = ballBody.position.x - TARGET_POS.x;
             const dz = ballBody.position.z - TARGET_POS.z;
-            const dist = Math.sqrt(dx*dx + dz*dz);
+            const dist = Math.sqrt(dx * dx + dz * dz);
 
             if (dist < TARGET_RADIUS && ballBody.position.y > -1) {
                 endGame(true);
@@ -441,18 +609,39 @@
             gameActive = false;
             const statusEl = document.getElementById('status-msg');
             statusEl.style.display = 'block';
+
             if (isWin) {
-                statusEl.textContent = "SUCCESS!";
-                statusEl.classList.add('win');
+                statusEl.textContent = "SUCCESS!\nYou obtained a key.";
+                statusEl.className = 'win';
+
+                if (!hasKey) {
+                    hasKey = true;
+                    inventory.add("key");
+                    updateInventoryUI();
+                    showStatus("You feel a key appear in your hand.");
+                }
             } else {
                 statusEl.textContent = "FAILURE";
-                statusEl.classList.add('lose');
+                statusEl.className = 'lose';
+                showStatus("You can press R to retry the puzzle.");
             }
         }
 
+        // --- Misc ---
         function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
+            const aspect = window.innerWidth / window.innerHeight;
+
+            // Orthographic camera
+            orthoCamera.left   = -viewSize * aspect;
+            orthoCamera.right  =  viewSize * aspect;
+            orthoCamera.top    =  viewSize;
+            orthoCamera.bottom = -viewSize;
+            orthoCamera.updateProjectionMatrix();
+
+            // Perspective camera
+            perspCamera.aspect = aspect;
+            perspCamera.updateProjectionMatrix();
+
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
