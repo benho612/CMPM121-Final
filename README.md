@@ -1,4 +1,11 @@
 # CMPM121-Final 
+# Devlog Entry - [12-1-2025]  
+## How we satisfied the software requirements
+We kept the HTML5 + JavaScript with Cannon-es format that satisfies the F1 requirements. This is working great, so we don't want to change this. In this stage of development, we designed several rooms with different objects that the player can obtain. By going through different rooms, the player needs to collect all the items and get the key to escape. Normally, the player can click on the item to collect it, but the key needs to be collected through a quick physics puzzle. After collecting the key, the player will need to find the correct door to escape. There's an inventory box on the top right, so the player can keep track of what items they have collected. In the physical puzzle, the player will fail the obtain the key if they drop the ball outside the platform. Currently, there's one conclusive ending of the player has solved the puzzle. 
+
+## Reflection
+We updated the main mechanic of the gameplay. It used to be a physical puzzle, but now we have added the random room/door mechanic to make the game more interesting. Along with the updated UI and inventory system, the player will feel more immersive.   
+  
 # Devlog Entry - [11-21-2025]  
 - updated DevLog to reflect changes
 ## How we satisfied the software requirements
