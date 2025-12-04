@@ -1003,7 +1003,7 @@
             }
         } else {
             scene.background.set(0xcbe5ff);
-            scene.fog.color.set(0xcbe5ff);
+            //scene.fog.color.set(0xcbe5ff);
             
             // Increased Intensity for Mobile Visibility
             ambientLight.intensity = 1.0; // Was 0.95
@@ -1568,7 +1568,7 @@
         } else {
             statusEl.textContent = "FAILURE";
             statusEl.className = 'lose';
-            showStatus("You can press R or the Restart button to retry.");
+            showStatus("Press the Restart button to retry.");
         }
         saveGame(AUTO_SLOT);
     }
