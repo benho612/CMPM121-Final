@@ -19,6 +19,23 @@
             transition: background-color 0.3s, color 0.3s; /* Smooth transition */
         }
 
+        /* RTL mode helper */
+        body.rtl-mode {
+            direction: rtl;
+        }
+
+        body.rtl-mode #instructions,
+        body.rtl-mode #message,
+        body.rtl-mode #status-msg,
+        body.rtl-mode #inventory-ui {
+            text-align: right;
+        }
+
+        body.rtl-mode #ui-layer {
+            left: auto;
+            right: 20px;
+        }
+
         /* --- Header Buttons --- */
         .header-btn {
             position: absolute;
@@ -69,7 +86,7 @@
         }
 
         /* UI Containers */
-        #inventory-ui, #save-ui, #theme-ui {
+        #inventory-ui, #save-ui, #theme-ui, #lang-ui {
             position: relative;
             background: rgba(255, 255, 255, 0.1);
             padding: 15px;
@@ -152,23 +169,28 @@
         }
 
         /* UI Element Styling */
-        #save-ui span, #theme-ui span {
+        #save-ui span, #theme-ui span, #lang-ui span {
             display: block;
             margin-bottom: 5px;
             font-size: 14px;
         }
         
-        #save-ui button, #theme-ui button {
+        #save-ui button, #theme-ui button, #lang-ui button {
             padding: 8px;
             margin: 2px;
             font-size: 14px;
             cursor: pointer;
         }
         
-        #theme-ui {
+        #theme-ui, #lang-ui {
             flex-direction: row;
             flex-wrap: wrap;
             justify-content: center;
+        }
+
+        #theme-ui button.active,
+        #lang-ui button.active {
+            border: 2px solid #4ade80;
         }
 
         /* --- Joystick Controls (Default / Dark Mode) --- */
@@ -266,7 +288,8 @@
 
         body.light-mode #inventory-ui, 
         body.light-mode #save-ui, 
-        body.light-mode #theme-ui {
+        body.light-mode #theme-ui,
+        body.light-mode #lang-ui {
             background: rgba(0, 0, 0, 0.05);
             color: #111827;
         }
@@ -335,6 +358,13 @@
             <button data-theme="light">Light</button>
             <button data-theme="dark">Dark</button>
         </div>
+
+        <div id="lang-ui">
+            <span style="width:100%">Language:</span>
+            <button data-lang="en" class="active">EN</button>
+            <button data-lang="zh">中文</button>
+            <button data-lang="ar">العربية</button>
+        </div>
         
         <button id="close-menu-btn" style="padding:10px 20px; font-size:16px; cursor:pointer;">Resume Game</button>
     </div>
@@ -372,6 +402,9 @@
 
         // Modes: menu | maze | puzzle | ending
         let currentMode = "menu";
+
+        // Language: 'en' | 'zh' | 'ar'
+        let currentLang = 'en';
 
         // Maze rooms: 3x3
         const NUM_ROWS = 3;
@@ -455,6 +488,9 @@
                     if (pendingLoadData.themeMode) {
                         themeMode = pendingLoadData.themeMode;
                     }
+                    if (pendingLoadData.lang) {
+                        currentLang = pendingLoadData.lang;
+                    }
                 }
             }
         } catch (e) {
@@ -469,7 +505,6 @@
             // THREE.js setup
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x202025);
-            // FIXED FOG: Increased range to prevent floor disappearing on mobile
             scene.fog = new THREE.Fog(0x202025, 30, 150); 
 
             const aspect = window.innerWidth / window.innerHeight;
@@ -516,16 +551,12 @@
             document.body.appendChild(renderer.domElement);
 
             // --- Lighting Setup ---
-            
-            // Hemisphere Light
             hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
             scene.add(hemiLight);
 
-            // Ambient
             ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambientLight);
 
-            // Directional
             dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
             dirLight.position.set(10, 20, 10);
             dirLight.castShadow = true;
@@ -704,942 +735,1316 @@
                 const portalGeo = new THREE.BoxGeometry(2, 3, 0.5);
                 const portalMat = new THREE.MeshStandardMaterial({ color: 0x8b5cf6 });
 
-            const portalDoor = new THREE.Mesh(portalGeo, portalMat);
-            portalDoor.userData.type = "door";
-            portalDoor.userData.kind = "finalExit";
-            portalDoor.userData.target = "ending";
-
-            if (r === 0) {
-                portalDoor.position.set(0, 1.5, -5.75);
-            } else if (r === NUM_ROWS - 1) {
-                portalDoor.position.set(0, 1.5, 5.75);
-            } else if (c === 0) {
-                portalDoor.rotation.y = Math.PI / 2;
-                portalDoor.position.set(-5.75, 1.5, 0);
-            } else {
-                portalDoor.rotation.y = Math.PI / 2;
-                portalDoor.position.set(5.75, 1.5, 0);
-            }
-
-            group.add(portalDoor);
-        }
-
-        // --- PUZZLE ROOM (physics puzzle) ---
-        {
-            const floorGeoB = new THREE.BoxGeometry(20, 1, 20);
-            const floorMatB = new THREE.MeshStandardMaterial({ color: 0x666644 });
-            puzzleFloorMat = floorMatB;
-            floorMesh = new THREE.Mesh(floorGeoB, floorMatB);
-            floorMesh.receiveShadow = true;
-            puzzleGroup.add(floorMesh);
-
-            const floorShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
-            floorBody = new CANNON.Body({
-                mass: 0,
-                type: CANNON.Body.KINEMATIC,
-                material: physicsMaterial
-            });
-            floorBody.addShape(floorShape);
-            world.addBody(floorBody);
-
-            const ballRadius = 0.8;
-            const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
-            const ballMat = new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.4 });
-            ballMesh = new THREE.Mesh(ballGeo, ballMat);
-            ballMesh.castShadow = true;
-            puzzleGroup.add(ballMesh);
-
-            const ballShape = new CANNON.Sphere(ballRadius);
-            ballBody = new CANNON.Body({
-                mass: 5,
-                shape: ballShape,
-                material: physicsMaterial
-            });
-            ballBody.position.set(-5, 5, -5);
-            ballBody.linearDamping = 0.1;
-            world.addBody(ballBody);
-
-            const targetGeo = new THREE.CylinderGeometry(
-                TARGET_RADIUS,
-                TARGET_RADIUS,
-                0.1,
-                32
-            );
-            const targetMat = new THREE.MeshBasicMaterial({
-                color: 0x4ade80,
-                opacity: 0.5,
-                transparent: true
-            });
-            targetMesh = new THREE.Mesh(targetGeo, targetMat);
-            targetMesh.position.set(TARGET_POS.x, 0.6, TARGET_POS.z);
-            floorMesh.add(targetMesh);
-        }
-
-        // Events
-        window.addEventListener('resize', onWindowResize);
-        window.addEventListener('pointerdown', onPointerDown);
-        window.addEventListener('keydown', (e) => {
-            if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
-            if (e.key.toLowerCase() === 'r') restartGame();
-        });
-        window.addEventListener('keyup', (e) => {
-            if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
-        });
-
-        // Setup UI and Joystick
-        setupUIInteractions();
-        setupJoystick();
-
-        // Auto-save on tab close
-        window.addEventListener('beforeunload', () => {
-            saveGame(AUTO_SLOT);
-        });
-
-        updateInventoryUI();
-
-        // Set up theme from system preference
-        setupThemeFromSystem();
-
-        // Apply autosave if present, otherwise start at menu
-        if (pendingLoadData) {
-            applyLoadedData(pendingLoadData, true);
-        } else {
-            loadMenu();
-        }
-    }
-
-    // --- New UI & Joystick Logic ---
-
-    function setupUIInteractions() {
-        const gearBtn = document.getElementById('gear-btn');
-        const restartBtn = document.getElementById('puzzle-restart-btn');
-        const menu = document.getElementById('expanded-menu');
-        const closeBtn = document.getElementById('close-menu-btn');
-        const saveUI = document.getElementById('save-ui');
-        const themeUI = document.getElementById('theme-ui');
-
-        // Toggle Menu
-        function toggleMenu() {
-            menu.classList.toggle('open');
-        }
-
-        gearBtn.addEventListener('click', (e) => {
-            e.stopPropagation(); // prevent raycaster click
-            toggleMenu();
-        });
-
-        // Restart Puzzle Button
-        restartBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if(currentMode === "puzzle") {
-                restartGame();
-            }
-        });
-
-        closeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            menu.classList.remove('open');
-        });
-
-        // Save Handlers
-        saveUI.addEventListener('click', (e) => {
-            const btn = e.target;
-            if (!(btn instanceof HTMLButtonElement)) return;
-            const slot = btn.dataset.slot;
-            const action = btn.dataset.action;
-            if (!action) return;
-
-            e.stopPropagation();
-
-            if (action === 'save' || action === 'load') {
-                if (!slot) return;
-                if (action === 'save') {
-                    saveGame(slot);
-                    showStatus("Saved to " + slot.toUpperCase(), 1000);
-                } else if (action === 'load') {
-                    loadGame(slot);
-                    toggleMenu(); // Close menu on load
-                }
-            } else if (action === 'restart') {
-                fullRestart();
-                toggleMenu();
-            }
-        });
-
-        // Theme Handlers
-        themeUI.addEventListener('click', (e) => {
-            const btn = e.target;
-            if (!(btn instanceof HTMLButtonElement)) return;
-            const mode = btn.dataset.theme;
-            if (!mode) return;
-            e.stopPropagation();
-
-            themeMode = mode;
-            updateThemeButtons();
-            recomputeTheme();
-            saveGame(AUTO_SLOT);
-        });
-        updateThemeButtons();
-    }
-
-    function setupJoystick() {
-        const zone = document.getElementById('joystick-zone');
-        const knob = document.getElementById('joystick-knob');
-        let startX = 0, startY = 0;
-        let isDragging = false;
-        const maxDist = 35; // Maximum drag distance
-
-        zone.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            isDragging = true;
-            const touch = e.touches[0];
-            const rect = zone.getBoundingClientRect();
-            // Center of the joystick zone
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
-            
-            startX = centerX;
-            startY = centerY;
-            
-            updateJoystick(touch.clientX, touch.clientY);
-        }, { passive: false });
-
-        zone.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            if (!isDragging) return;
-            const touch = e.touches[0];
-            updateJoystick(touch.clientX, touch.clientY);
-        }, { passive: false });
-
-        const endDrag = (e) => {
-            if (!isDragging) return;
-            isDragging = false;
-            knob.style.transform = `translate(-50%, -50%)`;
-            // Reset keys
-            keys.ArrowUp = false;
-            keys.ArrowDown = false;
-            keys.ArrowLeft = false;
-            keys.ArrowRight = false;
-        };
-
-        zone.addEventListener('touchend', endDrag);
-        zone.addEventListener('touchcancel', endDrag);
-
-        function updateJoystick(clientX, clientY) {
-            let dx = clientX - startX;
-            let dy = clientY - startY;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            
-            if (dist > maxDist) {
-                const angle = Math.atan2(dy, dx);
-                dx = Math.cos(angle) * maxDist;
-                dy = Math.sin(angle) * maxDist;
-            }
-
-            knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-
-            // Map to keys logic (thresholds)
-            const threshold = 10;
-            keys.ArrowRight = dx > threshold;
-            keys.ArrowLeft = dx < -threshold;
-            keys.ArrowDown = dy > threshold;
-            keys.ArrowUp = dy < -threshold;
-        }
-    }
-
-    // --- Utility: shuffle array ---
-    function shuffleArray(arr) {
-        for (let i = arr.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [arr[i], arr[j]] = [arr[j], arr[i]];
-        }
-    }
-
-    // --- Screen shake helpers ---
-    function startScreenShake(duration = 0.4, intensity = 0.6) {
-        shakeDuration = duration;
-        shakeTime = duration;
-        shakeIntensity = intensity;
-        cameraBasePosition.copy(camera.position);
-    }
-
-    function updateScreenShake() {
-        if (shakeTime <= 0) return;
-
-        const progress = 1 - shakeTime / shakeDuration;
-        const damper = 1 - progress;
-
-        const offsetX = (Math.random() - 0.5) * 2 * shakeIntensity * damper;
-        const offsetY = (Math.random() - 0.5) * 2 * shakeIntensity * damper;
-
-        camera.position.set(
-            cameraBasePosition.x + offsetX,
-            cameraBasePosition.y + offsetY,
-            cameraBasePosition.z
-        );
-
-        shakeTime -= timeStep;
-        if (shakeTime <= 0) {
-            camera.position.copy(cameraBasePosition);
-        }
-    }
-
-    // --- Visual theme helpers (light/dark) ---
-    function applyTheme(mode) {
-        // 1. Handle CSS Classes for UI (Joystick, etc.)
-        if (mode === 'light') {
-            document.body.classList.add('light-mode');
-        } else {
-            document.body.classList.remove('light-mode');
-        }
-
-        // 2. Handle 3D Scene Properties
-        if (!scene || !ambientLight || !dirLight) return;
-
-        if (mode === "dark") {
-            scene.background.set(0x050816);
-            scene.fog.color.set(0x050816);
-            
-            // Further Increased Intensity for Mobile Visibility
-            ambientLight.intensity = 1.2; 
-            dirLight.intensity = 2.0;     
-            
-            dirLight.color.set(0xbfd7ff);
-
-            mazeFloorMats.forEach(m => {
-                m.color.set(0x1e293b);
-                m.roughness = 0.9;
-                m.metalness = 0.0;
-            });
-            mazeWallMats.forEach(m => {
-                m.color.set(0x020617);
-                m.roughness = 0.9;
-                m.metalness = 0.0;
-            });
-            if (puzzleFloorMat) {
-                // Made lighter to reflect more light in dark mode
-                puzzleFloorMat.color.set(0x5c6b7f); 
-                puzzleFloorMat.roughness = 0.7;
-                puzzleFloorMat.metalness = 0.1;
-            }
-        } else {
-            scene.background.set(0xcbe5ff);
-            scene.fog.color.set(0xcbe5ff);
-            
-            // Increased Intensity for Mobile Visibility
-            ambientLight.intensity = 1.0; 
-            dirLight.intensity = 1.2;     
-            
-            dirLight.color.set(0xfff2cf);
-
-            mazeFloorMats.forEach(m => {
-                m.color.set(0xe2e8f0);
-                m.roughness = 0.6;
-                m.metalness = 0.1;
-            });
-            mazeWallMats.forEach(m => {
-                m.color.set(0xf8fafc);
-                m.roughness = 0.7;
-                m.metalness = 0.0;
-            });
-            if (puzzleFloorMat) {
-                puzzleFloorMat.color.set(0xfacc6b);
-                puzzleFloorMat.roughness = 0.7;
-                puzzleFloorMat.metalness = 0.1;
-            }
-        }
-        renderer.setClearColor(scene.background);
-    }
-
-    function recomputeTheme() {
-        const effective = themeMode === "light" || themeMode === "dark"
-            ? themeMode
-            : (systemPrefersDark ? "dark" : "light");
-        applyTheme(effective);
-    }
-
-    function setupThemeFromSystem() {
-        if (window.matchMedia) {
-            const mq = window.matchMedia("(prefers-color-scheme: dark)");
-            systemPrefersDark = mq.matches;
-            recomputeTheme();
-
-            if (mq.addEventListener) {
-                mq.addEventListener("change", (e) => {
-                    systemPrefersDark = e.matches;
-                    if (themeMode === "system") {
-                        recomputeTheme();
-                    }
-                });
-            } else if (mq.addListener) {
-                mq.addListener((e) => {
-                    systemPrefersDark = e.matches;
-                    if (themeMode === "system") {
-                        recomputeTheme();
-                    }
-                });
-            }
-        } else {
-            systemPrefersDark = false;
-            recomputeTheme();
-        }
-    }
-
-    function updateThemeButtons() {
-        const themeUI = document.getElementById('theme-ui');
-        const buttons = themeUI.querySelectorAll('button[data-theme]');
-        buttons.forEach(btn => {
-            if (btn.dataset.theme === themeMode) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
-        });
-    }
-
-    // --- Save system helpers ---
-    function buildSaveData() {
-        return {
-            version: 2,
-            currentMode,
-            currentRoomRow,
-            currentRoomCol,
-            returnRoomRow,
-            returnRoomCol,
-            hasKey,
-            inventory: Array.from(inventory),
-            ballRoomCoord,
-            plateRoomCoord,
-            portalRoomCoord,
-            themeMode
-        };
-    }
-
-    function saveGame(slot = AUTO_SLOT) {
-        try {
-            const key = SAVE_PREFIX + slot;
-            localStorage.setItem(key, JSON.stringify(buildSaveData()));
-        } catch (e) {
-            console.warn("Save failed:", e);
-        }
-    }
-
-    function loadGame(slot) {
-        try {
-            const key = SAVE_PREFIX + slot;
-            const raw = localStorage.getItem(key);
-            if (!raw) {
-                showStatus("No save in " + slot.toUpperCase(), 1500);
-                return;
-            }
-            const data = JSON.parse(raw);
-            applyLoadedData(data, false);
-            showStatus("Loaded " + slot.toUpperCase(), 1000);
-        } catch (e) {
-            console.warn("Load failed:", e);
-        }
-    }
-
-    function applyLoadedData(data, fromInit) {
-        if (!data || typeof data !== "object") return;
-        pendingLoadData = data;
-
-        currentMode = data.currentMode || "maze";
-        currentRoomRow = data.currentRoomRow ?? CENTER_ROW;
-        currentRoomCol = data.currentRoomCol ?? CENTER_COL;
-        returnRoomRow = data.returnRoomRow ?? CENTER_ROW;
-        returnRoomCol = data.returnRoomCol ?? CENTER_COL;
-        hasKey = !!data.hasKey;
-
-        inventory.clear();
-        if (Array.isArray(data.inventory)) {
-            data.inventory.forEach(id => inventory.add(id));
-        }
-
-        ballRoomCoord = data.ballRoomCoord || ballRoomCoord;
-        plateRoomCoord = data.plateRoomCoord || plateRoomCoord;
-        portalRoomCoord = data.portalRoomCoord || portalRoomCoord;
-
-        if (data.themeMode) {
-            themeMode = data.themeMode;
-            updateThemeButtons();
-        }
-
-        updateInventoryUI();
-
-        recomputeTheme();
-
-        if (currentMode === "maze") {
-            showMazeRoom(currentRoomRow, currentRoomCol, fromInit);
-        } else if (currentMode === "puzzle") {
-            loadPuzzleScene();
-        } else if (currentMode === "ending") {
-            loadEnding();
-        } else {
-            loadMenu();
-        }
-    }
-
-    // --- Full game restart ---
-    function fullRestart() {
-        try {
-            ["slot1", "slot2", "slot3", AUTO_SLOT].forEach(slot => {
-                localStorage.removeItem(SAVE_PREFIX + slot);
-            });
-        } catch (e) {
-            console.warn("Failed to clear saves:", e);
-        }
-
-        // Reset in-memory state
-        currentMode = "menu";
-        currentRoomRow = CENTER_ROW;
-        currentRoomCol = CENTER_COL;
-        returnRoomRow = CENTER_ROW;
-        returnRoomCol = CENTER_COL;
-        hasKey = false;
-        inventory.clear();
-        pendingLoadData = null;
-
-        updateInventoryUI();
-        showStatus("Game fully restarted.", 1200);
-
-        // Go back to main menu and create a fresh autosave
-        loadMenu();
-    }
-
-    // --- Scene helpers ---
-    function refreshItemVisibility() {
-        for (let r = 0; r < NUM_ROWS; r++) {
-            for (let c = 0; c < NUM_COLS; c++) {
-                const g = mazeRooms[r][c];
-                g.children.forEach(obj => {
-                    if (obj.userData && obj.userData.type === "item") {
-                        const id = obj.userData.itemId;
-                        obj.visible = !inventory.has(id);
-                    }
-                });
-            }
-        }
-    }
-
-    function hideAllRooms() {
-        for (let r = 0; r < NUM_ROWS; r++) {
-            for (let c = 0; c < NUM_COLS; c++) {
-                mazeRooms[r][c].visible = false;
-            }
-        }
-        menuGroup.visible = false;
-        puzzleGroup.visible = false;
-    }
-
-    function toggleJoystick(visible) {
-        const joy = document.getElementById('joystick-zone');
-        // Only show joystick if game requests it AND we are on mobile
-        joy.style.display = (visible && isMobileDevice) ? 'block' : 'none';
-    }
-
-    function loadMenu() {
-        currentMode = "menu";
-        hideAllRooms();
-        toggleJoystick(false);
-        menuGroup.visible = true;
-        
-        // Hide restart button in menu
-        document.getElementById('puzzle-restart-btn').style.display = 'none';
-
-        const instr = document.getElementById('instructions');
-        const startText = document.getElementById('start-text');
-        const statusEl = document.getElementById('status-msg');
-
-        statusEl.style.display = 'none';
-        statusEl.className = '';
-
-        // Reset Camera based on aspect ratio (fix for Start Screen zoom)
-        const aspect = window.innerWidth / window.innerHeight;
-        const isPortrait = aspect < 1.0;
-        const camDist = isPortrait ? 30 : 15; // Increased Portrait Zoom dist
-
-        camera = perspCamera;
-        camera.position.set(0, 12, camDist);
-        camera.lookAt(0, 10, 0);
-        cameraBasePosition.copy(camera.position);
-
-        instr.style.display = 'none';
-        startText.style.display = 'block';
-
-        saveGame(AUTO_SLOT);
-    }
-
-    function showMazeRoom(row, col, skipSave = false) {
-        currentMode = "maze";
-        currentRoomRow = row;
-        currentRoomCol = col;
-
-        hideAllRooms();
-        toggleJoystick(false);
-        mazeRooms[row][col].visible = true;
-        
-        // Hide restart button in maze
-        document.getElementById('puzzle-restart-btn').style.display = 'none';
-
-        const instr = document.getElementById('instructions');
-        const startText = document.getElementById('start-text');
-        const statusEl = document.getElementById('status-msg');
-
-        startText.style.display = 'none';
-        statusEl.style.display = 'none';
-        statusEl.className = '';
-
-        camera = orthoCamera;
-        camera.position.set(0, 25, 0);
-        camera.lookAt(0, 0, 0);
-        camera.up.set(0, 0, -1);
-        cameraBasePosition.copy(camera.position);
-
-        instr.style.display = 'block';
-
-        const isCenter = (row === CENTER_ROW && col === CENTER_COL);
-
-        if (isCenter) {
-            instr.innerHTML = `
-                <h2>Central Room</h2>
-                <p>You are in the <b>center</b> of a 3×3 maze.</p>
-                <p>Find a <b>ball</b>, a <b>plate</b>, and a <b>locked portal</b>.</p>
-                <p>Collect both items to be dragged into a gravity puzzle.</p>
-                <p>Beat the puzzle to earn a <b>key</b>, then find the portal room and escape.</p>
-            `;
-        } else {
-            instr.innerHTML = `
-                <h2>Maze Room</h2>
-                <p>This is one of the nine rooms in the maze.</p>
-                <p>Click objects to interact, and doors to move to adjacent rooms.</p>
-                <p>You need a <b>ball</b>, a <b>plate</b>, then the puzzle key to open the portal.</p>
-            `;
-        }
-
-        if (!skipSave) {
-            saveGame(AUTO_SLOT);
-        }
-    }
-
-    function loadPuzzleScene() {
-        currentMode = "puzzle";
-        hideAllRooms();
-        toggleJoystick(true); // Enable Joystick (will check mobile flag inside)
-        puzzleGroup.visible = true;
-        
-        // Show restart button
-        document.getElementById('puzzle-restart-btn').style.display = 'flex';
-
-        const instr = document.getElementById('instructions');
-        const startText = document.getElementById('start-text');
-        const statusEl = document.getElementById('status-msg');
-
-        startText.style.display = 'none';
-        statusEl.style.display = 'none';
-        statusEl.className = '';
-
-        // Reset Perspective Camera (Zoom check logic in Init/Resize)
-        const aspect = window.innerWidth / window.innerHeight;
-        const isPortrait = aspect < 1.0;
-        const puzzleCamDist = isPortrait ? 45 : 25;
-        const puzzleCamHeight = isPortrait ? 35 : 20;
-
-        camera = perspCamera;
-        camera.position.set(0, puzzleCamHeight, puzzleCamDist);
-        camera.lookAt(0, 0, 0);
-        cameraBasePosition.copy(camera.position);
-
-        instr.style.display = 'block';
-        instr.innerHTML = `
-            <h2>Gravity Puzzle Room</h2>
-            <p>Use <b>Arrow Keys</b> or <b>Joystick</b> to tilt the floor.</p>
-            <p>Roll the ball into the <b>green zone</b>.</p>
-            <p>Don't fall off!</p>
-        `;
-        restartGame();
-        saveGame(AUTO_SLOT);
-    }
-
-    function loadEnding() {
-        currentMode = "ending";
-        hideAllRooms();
-        toggleJoystick(false);
-        
-        // Hide restart button
-        document.getElementById('puzzle-restart-btn').style.display = 'none';
-
-        const instr = document.getElementById('instructions');
-        const statusEl = document.getElementById('status-msg');
-        const startText = document.getElementById('start-text');
-
-        instr.style.display = 'none';
-        startText.style.display = 'none';
-
-        camera = perspCamera;
-        camera.position.set(0, 12, 15);
-        camera.lookAt(0, 0, 0);
-        cameraBasePosition.copy(camera.position);
-
-        statusEl.style.display = 'block';
-        statusEl.className = 'win';
-        statusEl.textContent = "You step through the portal and escape the maze!\nThanks for playing.";
-        showStatus("The labyrinth dissolves behind you...", 3000);
-
-        saveGame(AUTO_SLOT);
-    }
-
-    function updateInventoryUI() {
-        const invEl = document.getElementById('inventory-ui');
-        if (!invEl) return;
-        if (inventory.size === 0) {
-            invEl.textContent = 'Inventory: (empty)';
-        } else {
-            invEl.textContent = 'Inventory: ' + Array.from(inventory).join(', ');
-        }
-        refreshItemVisibility();
-    }
-
-    function showStatus(text, timeout = 2000) {
-        const msgEl = document.getElementById('message');
-        if (!msgEl) return;
-        msgEl.textContent = text;
-        msgEl.style.display = 'block';
-        if (timeout > 0) {
-            clearTimeout(showStatus._timeoutId);
-            showStatus._timeoutId = setTimeout(() => {
-                msgEl.style.display = 'none';
-            }, timeout);
-        }
-    }
-
-    // --- Input / interaction ---
-    function onPointerDown(event) {
-        // Prevent clicking through the menu overlay if open
-        const menu = document.getElementById('expanded-menu');
-        if (menu.classList.contains('open')) return;
-        
-        // Prevent clicking through joystick or header buttons
-        if (event.target.closest('#joystick-zone')) return;
-        if (event.target.closest('.header-btn')) return;
-
-        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-        raycaster.setFromCamera(mouse, camera);
-
-        let clickable = [];
-        if (currentMode === "menu") {
-            clickable = menuGroup.children;
-        } else if (currentMode === "maze") {
-            clickable = mazeRooms[currentRoomRow][currentRoomCol].children;
-        } else if (currentMode === "puzzle") {
-            clickable = puzzleGroup.children;
-        } else {
-            return;
-        }
-
-        const hits = raycaster.intersectObjects(clickable, true);
-        if (hits.length === 0) return;
-
-        const obj = hits[0].object;
-
-        // MENU
-        if (currentMode === "menu" && obj.userData.type === "startGame") {
-            showMazeRoom(CENTER_ROW, CENTER_COL);
-            return;
-        }
-
-        // MAZE
-        if (currentMode === "maze") {
-            if (obj.userData.type === "item") {
-                const id = obj.userData.itemId;
-                if (!inventory.has(id)) {
-                    inventory.add(id);
-                    updateInventoryUI();
-                    showStatus("Picked up " + id + "!");
-                }
-
-                // If ball + plate collected and no key yet -> auto enter puzzle
-                if (inventory.has("ball") && inventory.has("plate") && !hasKey) {
-                    returnRoomRow = currentRoomRow;
-                    returnRoomCol = currentRoomCol;
-
-                    startScreenShake(0.45, 0.8);
-                    showStatus("The floor trembles... you are dragged elsewhere!", 2000);
-                    saveGame(AUTO_SLOT);
-                    setTimeout(() => {
-                        loadPuzzleScene();
-                    }, 800);
+                const portalDoor = new THREE.Mesh(portalGeo, portalMat);
+                portalDoor.userData.type = "door";
+                portalDoor.userData.kind = "finalExit";
+                portalDoor.userData.target = "ending";
+
+                if (r === 0) {
+                    portalDoor.position.set(0, 1.5, -5.75);
+                } else if (r === NUM_ROWS - 1) {
+                    portalDoor.position.set(0, 1.5, 5.75);
+                } else if (c === 0) {
+                    portalDoor.rotation.y = Math.PI / 2;
+                    portalDoor.position.set(-5.75, 1.5, 0);
                 } else {
-                    saveGame(AUTO_SLOT);
+                    portalDoor.rotation.y = Math.PI / 2;
+                    portalDoor.position.set(5.75, 1.5, 0);
                 }
+
+                group.add(portalDoor);
+            }
+
+            // --- PUZZLE ROOM (physics puzzle) ---
+            {
+                const floorGeoB = new THREE.BoxGeometry(20, 1, 20);
+                const floorMatB = new THREE.MeshStandardMaterial({ color: 0x666644 });
+                puzzleFloorMat = floorMatB;
+                floorMesh = new THREE.Mesh(floorGeoB, floorMatB);
+                floorMesh.receiveShadow = true;
+                puzzleGroup.add(floorMesh);
+
+                const floorShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
+                floorBody = new CANNON.Body({
+                    mass: 0,
+                    type: CANNON.Body.KINEMATIC,
+                    material: physicsMaterial
+                });
+                floorBody.addShape(floorShape);
+                world.addBody(floorBody);
+
+                const ballRadius = 0.8;
+                const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
+                const ballMat = new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.4 });
+                ballMesh = new THREE.Mesh(ballGeo, ballMat);
+                ballMesh.castShadow = true;
+                puzzleGroup.add(ballMesh);
+
+                const ballShape = new CANNON.Sphere(ballRadius);
+                ballBody = new CANNON.Body({
+                    mass: 5,
+                    shape: ballShape,
+                    material: physicsMaterial
+                });
+                ballBody.position.set(-5, 5, -5);
+                ballBody.linearDamping = 0.1;
+                world.addBody(ballBody);
+
+                const targetGeo = new THREE.CylinderGeometry(
+                    TARGET_RADIUS,
+                    TARGET_RADIUS,
+                    0.1,
+                    32
+                );
+                const targetMat = new THREE.MeshBasicMaterial({
+                    color: 0x4ade80,
+                    opacity: 0.5,
+                    transparent: true
+                });
+                targetMesh = new THREE.Mesh(targetGeo, targetMat);
+                targetMesh.position.set(TARGET_POS.x, 0.6, TARGET_POS.z);
+                floorMesh.add(targetMesh);
+            }
+
+            // Events
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('pointerdown', onPointerDown);
+            window.addEventListener('keydown', (e) => {
+                if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+                if (e.key.toLowerCase() === 'r') restartGame();
+            });
+            window.addEventListener('keyup', (e) => {
+                if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
+            });
+
+            // Setup UI and Joystick
+            setupUIInteractions();
+            setupJoystick();
+
+            // Auto-save on tab close
+            window.addEventListener('beforeunload', () => {
+                saveGame(AUTO_SLOT);
+            });
+
+            updateInventoryUI();
+
+            // Set up theme from system preference
+            setupThemeFromSystem();
+
+            // Apply language-dependent static UI
+            refreshLanguageStaticUI();
+
+            // Apply autosave if present, otherwise start at menu
+            if (pendingLoadData) {
+                applyLoadedData(pendingLoadData, true);
+            } else {
+                loadMenu();
+            }
+        }
+
+        // --- New UI & Joystick Logic ---
+        function setupUIInteractions() {
+            const gearBtn = document.getElementById('gear-btn');
+            const restartBtn = document.getElementById('puzzle-restart-btn');
+            const menu = document.getElementById('expanded-menu');
+            const closeBtn = document.getElementById('close-menu-btn');
+            const saveUI = document.getElementById('save-ui');
+            const themeUI = document.getElementById('theme-ui');
+            const langUI = document.getElementById('lang-ui');
+
+            // Toggle Menu
+            function toggleMenu() {
+                menu.classList.toggle('open');
+            }
+
+            gearBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleMenu();
+            });
+
+            // Restart Puzzle Button
+            restartBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if(currentMode === "puzzle") {
+                    restartGame();
+                }
+            });
+
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                menu.classList.remove('open');
+            });
+
+            // Save Handlers
+            saveUI.addEventListener('click', (e) => {
+                const btn = e.target;
+                if (!(btn instanceof HTMLButtonElement)) return;
+                const slot = btn.dataset.slot;
+                const action = btn.dataset.action;
+                if (!action) return;
+
+                e.stopPropagation();
+
+                if (action === 'save' || action === 'load') {
+                    if (!slot) return;
+                    if (action === 'save') {
+                        saveGame(slot);
+                        let msg;
+                        if (currentLang === 'en') {
+                            msg = "Saved to " + slot.toUpperCase();
+                        } else if (currentLang === 'zh') {
+                            msg = "已保存到 " + slot.toUpperCase();
+                        } else {
+                            msg = "تم الحفظ في " + slot.toUpperCase();
+                        }
+                        showStatus(msg, 1000);
+                    } else if (action === 'load') {
+                        loadGame(slot);
+                        toggleMenu();
+                    }
+                } else if (action === 'restart') {
+                    fullRestart();
+                    toggleMenu();
+                }
+            });
+
+            // Theme Handlers
+            themeUI.addEventListener('click', (e) => {
+                const btn = e.target;
+                if (!(btn instanceof HTMLButtonElement)) return;
+                const mode = btn.dataset.theme;
+                if (!mode) return;
+                e.stopPropagation();
+
+                themeMode = mode;
+                updateThemeButtons();
+                recomputeTheme();
+                saveGame(AUTO_SLOT);
+            });
+            updateThemeButtons();
+
+            // Language Handlers
+            langUI.addEventListener('click', (e) => {
+                const btn = e.target;
+                if (!(btn instanceof HTMLButtonElement)) return;
+                const lang = btn.dataset.lang;
+                if (!lang) return;
+                e.stopPropagation();
+
+                currentLang = lang;
+                updateLangButtons();
+                refreshLanguageStaticUI();
+                refreshLanguageForCurrentMode();
+                saveGame(AUTO_SLOT);
+            });
+            updateLangButtons();
+        }
+
+        function setupJoystick() {
+            const zone = document.getElementById('joystick-zone');
+            const knob = document.getElementById('joystick-knob');
+            let startX = 0, startY = 0;
+            let isDragging = false;
+            const maxDist = 35;
+
+            zone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                isDragging = true;
+                const touch = e.touches[0];
+                const rect = zone.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                
+                startX = centerX;
+                startY = centerY;
+                
+                updateJoystick(touch.clientX, touch.clientY);
+            }, { passive: false });
+
+            zone.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (!isDragging) return;
+                const touch = e.touches[0];
+                updateJoystick(touch.clientX, touch.clientY);
+            }, { passive: false });
+
+            const endDrag = () => {
+                if (!isDragging) return;
+                isDragging = false;
+                knob.style.transform = `translate(-50%, -50%)`;
+                keys.ArrowUp = false;
+                keys.ArrowDown = false;
+                keys.ArrowLeft = false;
+                keys.ArrowRight = false;
+            };
+
+            zone.addEventListener('touchend', endDrag);
+            zone.addEventListener('touchcancel', endDrag);
+
+            function updateJoystick(clientX, clientY) {
+                let dx = clientX - startX;
+                let dy = clientY - startY;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                if (dist > maxDist) {
+                    const angle = Math.atan2(dy, dx);
+                    dx = Math.cos(angle) * maxDist;
+                    dy = Math.sin(angle) * maxDist;
+                }
+
+                knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+
+                const threshold = 10;
+                keys.ArrowRight = dx > threshold;
+                keys.ArrowLeft = dx < -threshold;
+                keys.ArrowDown = dy > threshold;
+                keys.ArrowUp = dy < -threshold;
+            }
+        }
+
+        // --- Utility: shuffle array ---
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+        }
+
+        // --- Screen shake helpers ---
+        function startScreenShake(duration = 0.4, intensity = 0.6) {
+            shakeDuration = duration;
+            shakeTime = duration;
+            shakeIntensity = intensity;
+            cameraBasePosition.copy(camera.position);
+        }
+
+        function updateScreenShake() {
+            if (shakeTime <= 0) return;
+
+            const progress = 1 - shakeTime / shakeDuration;
+            const damper = 1 - progress;
+
+            const offsetX = (Math.random() - 0.5) * 2 * shakeIntensity * damper;
+            const offsetY = (Math.random() - 0.5) * 2 * shakeIntensity * damper;
+
+            camera.position.set(
+                cameraBasePosition.x + offsetX,
+                cameraBasePosition.y + offsetY,
+                cameraBasePosition.z
+            );
+
+            shakeTime -= timeStep;
+            if (shakeTime <= 0) {
+                camera.position.copy(cameraBasePosition);
+            }
+        }
+
+        // --- Visual theme helpers (light/dark) ---
+        function applyTheme(mode) {
+            if (mode === 'light') {
+                document.body.classList.add('light-mode');
+            } else {
+                document.body.classList.remove('light-mode');
+            }
+
+            if (!scene || !ambientLight || !dirLight) return;
+
+            if (mode === "dark") {
+                scene.background.set(0x050816);
+                scene.fog.color.set(0x050816);
+                ambientLight.intensity = 1.2; 
+                dirLight.intensity = 2.0;     
+                dirLight.color.set(0xbfd7ff);
+
+                mazeFloorMats.forEach(m => {
+                    m.color.set(0x1e293b);
+                    m.roughness = 0.9;
+                    m.metalness = 0.0;
+                });
+                mazeWallMats.forEach(m => {
+                    m.color.set(0x020617);
+                    m.roughness = 0.9;
+                    m.metalness = 0.0;
+                });
+                if (puzzleFloorMat) {
+                    puzzleFloorMat.color.set(0x5c6b7f); 
+                    puzzleFloorMat.roughness = 0.7;
+                    puzzleFloorMat.metalness = 0.1;
+                }
+            } else {
+                scene.background.set(0xcbe5ff);
+                scene.fog.color.set(0xcbe5ff);
+                ambientLight.intensity = 1.0; 
+                dirLight.intensity = 1.2;     
+                dirLight.color.set(0xfff2cf);
+
+                mazeFloorMats.forEach(m => {
+                    m.color.set(0xe2e8f0);
+                    m.roughness = 0.6;
+                    m.metalness = 0.1;
+                });
+                mazeWallMats.forEach(m => {
+                    m.color.set(0xf8fafc);
+                    m.roughness = 0.7;
+                    m.metalness = 0.0;
+                });
+                if (puzzleFloorMat) {
+                    puzzleFloorMat.color.set(0xfacc6b);
+                    puzzleFloorMat.roughness = 0.7;
+                    puzzleFloorMat.metalness = 0.1;
+                }
+            }
+            renderer.setClearColor(scene.background);
+        }
+
+        function recomputeTheme() {
+            const effective = themeMode === "light" || themeMode === "dark"
+                ? themeMode
+                : (systemPrefersDark ? "dark" : "light");
+            applyTheme(effective);
+        }
+
+        function setupThemeFromSystem() {
+            if (window.matchMedia) {
+                const mq = window.matchMedia("(prefers-color-scheme: dark)");
+                systemPrefersDark = mq.matches;
+                recomputeTheme();
+
+                if (mq.addEventListener) {
+                    mq.addEventListener("change", (e) => {
+                        systemPrefersDark = e.matches;
+                        if (themeMode === "system") {
+                            recomputeTheme();
+                        }
+                    });
+                } else if (mq.addListener) {
+                    mq.addListener((e) => {
+                        systemPrefersDark = e.matches;
+                        if (themeMode === "system") {
+                            recomputeTheme();
+                        }
+                    });
+                }
+            } else {
+                systemPrefersDark = false;
+                recomputeTheme();
+            }
+        }
+
+        function updateThemeButtons() {
+            const themeUI = document.getElementById('theme-ui');
+            const buttons = themeUI.querySelectorAll('button[data-theme]');
+            buttons.forEach(btn => {
+                if (btn.dataset.theme === themeMode) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+
+        function updateLangButtons() {
+            const langUI = document.getElementById('lang-ui');
+            const buttons = langUI.querySelectorAll('button[data-lang]');
+            buttons.forEach(btn => {
+                if (btn.dataset.lang === currentLang) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        }
+
+        function applyDirForLang() {
+            if (currentLang === 'ar') {
+                document.body.dir = 'rtl';
+                document.body.classList.add('rtl-mode');
+            } else {
+                document.body.dir = 'ltr';
+                document.body.classList.remove('rtl-mode');
+            }
+        }
+
+        // --- Item display name helper ---
+        function getItemDisplayName(id) {
+            if (currentLang === 'en') {
+                if (id === 'ball') return 'ball';
+                if (id === 'plate') return 'plate';
+                if (id === 'key') return 'key';
+                return id;
+            } else if (currentLang === 'zh') {
+                if (id === 'ball') return '球';
+                if (id === 'plate') return '盘子';
+                if (id === 'key') return '钥匙';
+                return id;
+            } else {
+                if (id === 'ball') return 'كرة';
+                if (id === 'plate') return 'صحن';
+                if (id === 'key') return 'مفتاح';
+                return id;
+            }
+        }
+
+        // --- Save system helpers ---
+        function buildSaveData() {
+            return {
+                version: 4,
+                currentMode,
+                currentRoomRow,
+                currentRoomCol,
+                returnRoomRow,
+                returnRoomCol,
+                hasKey,
+                inventory: Array.from(inventory),
+                ballRoomCoord,
+                plateRoomCoord,
+                portalRoomCoord,
+                themeMode,
+                lang: currentLang
+            };
+        }
+
+        function saveGame(slot = AUTO_SLOT) {
+            try {
+                const key = SAVE_PREFIX + slot;
+                localStorage.setItem(key, JSON.stringify(buildSaveData()));
+            } catch (e) {
+                console.warn("Save failed:", e);
+            }
+        }
+
+        function loadGame(slot) {
+            try {
+                const key = SAVE_PREFIX + slot;
+                const raw = localStorage.getItem(key);
+                if (!raw) {
+                    let msg;
+                    if (currentLang === 'en') {
+                        msg = "No save in " + slot.toUpperCase();
+                    } else if (currentLang === 'zh') {
+                        msg = "没有找到存档 " + slot.toUpperCase();
+                    } else {
+                        msg = "لا يوجد حفظ في " + slot.toUpperCase();
+                    }
+                    showStatus(msg, 1500);
+                    return;
+                }
+                const data = JSON.parse(raw);
+                applyLoadedData(data, false);
+                let msg;
+                if (currentLang === 'en') {
+                    msg = "Loaded " + slot.toUpperCase();
+                } else if (currentLang === 'zh') {
+                    msg = "已读取 " + slot.toUpperCase();
+                } else {
+                    msg = "تم تحميل " + slot.toUpperCase();
+                }
+                showStatus(msg, 1000);
+            } catch (e) {
+                console.warn("Load failed:", e);
+            }
+        }
+
+        function applyLoadedData(data, fromInit) {
+            if (!data || typeof data !== "object") return;
+            pendingLoadData = data;
+
+            currentMode = data.currentMode || "maze";
+            currentRoomRow = data.currentRoomRow ?? CENTER_ROW;
+            currentRoomCol = data.currentRoomCol ?? CENTER_COL;
+            returnRoomRow = data.returnRoomRow ?? CENTER_ROW;
+            returnRoomCol = data.returnRoomCol ?? CENTER_COL;
+            hasKey = !!data.hasKey;
+
+            inventory.clear();
+            if (Array.isArray(data.inventory)) {
+                data.inventory.forEach(id => inventory.add(id));
+            }
+
+            ballRoomCoord = data.ballRoomCoord || ballRoomCoord;
+            plateRoomCoord = data.plateRoomCoord || plateRoomCoord;
+            portalRoomCoord = data.portalRoomCoord || portalRoomCoord;
+
+            if (data.themeMode) {
+                themeMode = data.themeMode;
+                updateThemeButtons();
+            }
+            if (data.lang) {
+                currentLang = data.lang;
+                updateLangButtons();
+                refreshLanguageStaticUI();
+            }
+
+            updateInventoryUI();
+
+            recomputeTheme();
+
+            if (currentMode === "maze") {
+                showMazeRoom(currentRoomRow, currentRoomCol, fromInit);
+            } else if (currentMode === "puzzle") {
+                loadPuzzleScene();
+            } else if (currentMode === "ending") {
+                loadEnding();
+            } else {
+                loadMenu();
+            }
+        }
+
+        // --- Full game restart ---
+        function fullRestart() {
+            try {
+                ["slot1", "slot2", "slot3", AUTO_SLOT].forEach(slot => {
+                    localStorage.removeItem(SAVE_PREFIX + slot);
+                });
+            } catch (e) {
+                console.warn("Failed to clear saves:", e);
+            }
+
+            currentMode = "menu";
+            currentRoomRow = CENTER_ROW;
+            currentRoomCol = CENTER_COL;
+            returnRoomRow = CENTER_ROW;
+            returnRoomCol = CENTER_COL;
+            hasKey = false;
+            inventory.clear();
+            pendingLoadData = null;
+
+            updateInventoryUI();
+            let msg;
+            if (currentLang === 'en') {
+                msg = "Game fully restarted.";
+            } else if (currentLang === 'zh') {
+                msg = "已重新开始一轮游戏。";
+            } else {
+                msg = "تمت إعادة تعيين اللعبة بالكامل.";
+            }
+            showStatus(msg, 1200);
+
+            loadMenu();
+        }
+
+        // --- Scene helpers ---
+        function refreshItemVisibility() {
+            for (let r = 0; r < NUM_ROWS; r++) {
+                for (let c = 0; c < NUM_COLS; c++) {
+                    const g = mazeRooms[r][c];
+                    g.children.forEach(obj => {
+                        if (obj.userData && obj.userData.type === "item") {
+                            const id = obj.userData.itemId;
+                            obj.visible = !inventory.has(id);
+                        }
+                    });
+                }
+            }
+        }
+
+        function hideAllRooms() {
+            for (let r = 0; r < NUM_ROWS; r++) {
+                for (let c = 0; c < NUM_COLS; c++) {
+                    mazeRooms[r][c].visible = false;
+                }
+            }
+            menuGroup.visible = false;
+            puzzleGroup.visible = false;
+        }
+
+        function toggleJoystick(visible) {
+            const joy = document.getElementById('joystick-zone');
+            joy.style.display = (visible && isMobileDevice) ? 'block' : 'none';
+        }
+
+        function loadMenu() {
+            currentMode = "menu";
+            hideAllRooms();
+            toggleJoystick(false);
+            menuGroup.visible = true;
+            
+            document.getElementById('puzzle-restart-btn').style.display = 'none';
+
+            const instr = document.getElementById('instructions');
+            const startText = document.getElementById('start-text');
+            const statusEl = document.getElementById('status-msg');
+
+            statusEl.style.display = 'none';
+            statusEl.className = '';
+
+            const aspect = window.innerWidth / window.innerHeight;
+            const isPortrait = aspect < 1.0;
+            const camDist = isPortrait ? 30 : 15;
+
+            camera = perspCamera;
+            camera.position.set(0, 12, camDist);
+            camera.lookAt(0, 10, 0);
+            cameraBasePosition.copy(camera.position);
+
+            instr.style.display = 'none';
+            startText.style.display = 'block';
+            if (currentLang === 'en') {
+                startText.textContent = 'START GAME ↓';
+            } else if (currentLang === 'zh') {
+                startText.textContent = '开始游戏 ↓';
+            } else {
+                startText.textContent = 'ابدأ اللعبة ↓';
+            }
+
+            saveGame(AUTO_SLOT);
+        }
+
+        function showMazeRoom(row, col, skipSave = false) {
+            currentMode = "maze";
+            currentRoomRow = row;
+            currentRoomCol = col;
+
+            hideAllRooms();
+            toggleJoystick(false);
+            mazeRooms[row][col].visible = true;
+            
+            document.getElementById('puzzle-restart-btn').style.display = 'none';
+
+            const instr = document.getElementById('instructions');
+            const startText = document.getElementById('start-text');
+            const statusEl = document.getElementById('status-msg');
+
+            startText.style.display = 'none';
+            statusEl.style.display = 'none';
+            statusEl.className = '';
+
+            camera = orthoCamera;
+            camera.position.set(0, 25, 0);
+            camera.lookAt(0, 0, 0);
+            camera.up.set(0, 0, -1);
+            cameraBasePosition.copy(camera.position);
+
+            instr.style.display = 'block';
+
+            const isCenter = (row === CENTER_ROW && col === CENTER_COL);
+
+            if (isCenter) {
+                if (currentLang === 'en') {
+                    instr.innerHTML = `
+                        <h2>Central Room</h2>
+                        <p>You are in the <b>center</b> of a 3×3 maze.</p>
+                        <p>Find a <b>ball</b>, a <b>plate</b>, and a <b>locked portal</b>.</p>
+                        <p>Collect both items to be dragged into a gravity puzzle.</p>
+                        <p>Beat the puzzle to earn a <b>key</b>, then find the portal room and escape.</p>
+                    `;
+                } else if (currentLang === 'zh') {
+                    instr.innerHTML = `
+                        <h2>中央房间</h2>
+                        <p>你现在在一个 <b>3×3</b> 迷宫的<b>中心</b>。</p>
+                        <p>找到一个<b>球</b>、一个<b>盘子</b>，以及一扇<b>被锁住的传送门</b>。</p>
+                        <p>收集两个道具后，你会被拖入重力谜题房间。</p>
+                        <p>解开谜题获得<b>钥匙</b>，再回到传送门房间逃离迷宫。</p>
+                    `;
+                } else {
+                    instr.innerHTML = `
+                        <h2>الغرفة المركزية</h2>
+                        <p>أنت الآن في <b>منتصف</b> متاهة بحجم <b>٣×٣</b>.</p>
+                        <p>ابحث عن <b>كرة</b> و<b>صحن</b> و<b>بوابة مقفلة</b>.</p>
+                        <p>بعد جمع الغرضين، سيتم سحبك إلى غرفة لغز الجاذبية.</p>
+                        <p>إنهاء اللغز يعطيك <b>مفتاحًا</b>، ثم اعثر على غرفة البوابة للهروب.</p>
+                    `;
+                }
+            } else {
+                if (currentLang === 'en') {
+                    instr.innerHTML = `
+                        <h2>Maze Room</h2>
+                        <p>This is one of the nine rooms in the maze.</p>
+                        <p>Click objects to interact, and doors to move to adjacent rooms.</p>
+                        <p>You need a <b>ball</b>, a <b>plate</b>, then the puzzle key to open the portal.</p>
+                    `;
+                } else if (currentLang === 'zh') {
+                    instr.innerHTML = `
+                        <h2>迷宫房间</h2>
+                        <p>这是迷宫中的九个房间之一。</p>
+                        <p>点击物体可以互动，点击门可以前往相邻房间。</p>
+                        <p>你需要找到<b>球</b>和<b>盘子</b>，再通过谜题获得钥匙，才能打开传送门。</p>
+                    `;
+                } else {
+                    instr.innerHTML = `
+                        <h2>غرفة في المتاهة</h2>
+                        <p>هذه واحدة من الغرف التسع في المتاهة.</p>
+                        <p>انقر على الأشياء للتفاعل، وعلى الأبواب للانتقال إلى الغرف المجاورة.</p>
+                        <p>تحتاج إلى <b>كرة</b> و<b>صحن</b> ثم مفتاح اللغز لفتح البوابة.</p>
+                    `;
+                }
+            }
+
+            if (!skipSave) {
+                saveGame(AUTO_SLOT);
+            }
+        }
+
+        function loadPuzzleScene() {
+            currentMode = "puzzle";
+            hideAllRooms();
+            toggleJoystick(true);
+            puzzleGroup.visible = true;
+            
+            document.getElementById('puzzle-restart-btn').style.display = 'flex';
+
+            const instr = document.getElementById('instructions');
+            const startText = document.getElementById('start-text');
+            const statusEl = document.getElementById('status-msg');
+
+            startText.style.display = 'none';
+            statusEl.style.display = 'none';
+            statusEl.className = '';
+
+            const aspect = window.innerWidth / window.innerHeight;
+            const isPortrait = aspect < 1.0;
+            const puzzleCamDist = isPortrait ? 45 : 25;
+            const puzzleCamHeight = isPortrait ? 35 : 20;
+
+            camera = perspCamera;
+            camera.position.set(0, puzzleCamHeight, puzzleCamDist);
+            camera.lookAt(0, 0, 0);
+            cameraBasePosition.copy(camera.position);
+
+            instr.style.display = 'block';
+            if (currentLang === 'en') {
+                instr.innerHTML = `
+                    <h2>Gravity Puzzle Room</h2>
+                    <p>Use <b>Arrow Keys</b> or the <b>Joystick</b> to tilt the floor.</p>
+                    <p>Roll the ball into the <b>green zone</b>.</p>
+                    <p>Don't fall off!</p>
+                `;
+            } else if (currentLang === 'zh') {
+                instr.innerHTML = `
+                    <h2>重力谜题房间</h2>
+                    <p>使用<b>方向键</b>或屏幕<b>摇杆</b>来倾斜地板。</p>
+                    <p>把球滚进<b>绿色区域</b>。</p>
+                    <p>注意不要掉下去！</p>
+                `;
+            } else {
+                instr.innerHTML = `
+                    <h2>غرفة لغز الجاذبية</h2>
+                    <p>استخدم <b>أسهم لوحة المفاتيح</b> أو <b>عصا التحكم</b> لإمالة الأرضية.</p>
+                    <p>دحرج الكرة إلى <b>المنطقة الخضراء</b>.</p>
+                    <p>إياك أن تسقط خارج الحافة!</p>
+                `;
+            }
+
+            restartGame();
+            saveGame(AUTO_SLOT);
+        }
+
+        function loadEnding() {
+            currentMode = "ending";
+            hideAllRooms();
+            toggleJoystick(false);
+            
+            document.getElementById('puzzle-restart-btn').style.display = 'none';
+
+            const instr = document.getElementById('instructions');
+            const statusEl = document.getElementById('status-msg');
+            const startText = document.getElementById('start-text');
+
+            instr.style.display = 'none';
+            startText.style.display = 'none';
+
+            camera = perspCamera;
+            camera.position.set(0, 12, 15);
+            camera.lookAt(0, 0, 0);
+            cameraBasePosition.copy(camera.position);
+
+            statusEl.style.display = 'block';
+            statusEl.className = 'win';
+            if (currentLang === 'en') {
+                statusEl.textContent = "You step through the portal and escape the maze!\nThanks for playing.";
+                showStatus("The labyrinth dissolves behind you...", 3000);
+            } else if (currentLang === 'zh') {
+                statusEl.textContent = "你踏入传送门，成功逃出了迷宫！\n感谢游玩。";
+                showStatus("在你身后，迷宫缓缓消散……", 3000);
+            } else {
+                statusEl.textContent = "تدخل عبر البوابة وتهرب من المتاهة!\nشكرًا على اللعب.";
+                showStatus("المتاهة تختفي ببطء خلفك…", 3000);
+            }
+
+            saveGame(AUTO_SLOT);
+        }
+
+        function updateInventoryUI() {
+            const invEl = document.getElementById('inventory-ui');
+            if (!invEl) return;
+            if (inventory.size === 0) {
+                if (currentLang === 'en') {
+                    invEl.textContent = 'Inventory: (empty)';
+                } else if (currentLang === 'zh') {
+                    invEl.textContent = '背包： (空)';
+                } else {
+                    invEl.textContent = 'المخزون: (فارغ)';
+                }
+            } else {
+                const names = Array.from(inventory).map(id => getItemDisplayName(id));
+                let prefix;
+                if (currentLang === 'en') {
+                    prefix = 'Inventory: ';
+                } else if (currentLang === 'zh') {
+                    prefix = '背包：';
+                } else {
+                    prefix = 'المخزون: ';
+                }
+                invEl.textContent = prefix + names.join(', ');
+            }
+            refreshItemVisibility();
+        }
+
+        function showStatus(text, timeout = 2000) {
+            const msgEl = document.getElementById('message');
+            if (!msgEl) return;
+            msgEl.textContent = text;
+            msgEl.style.display = 'block';
+            if (timeout > 0) {
+                clearTimeout(showStatus._timeoutId);
+                showStatus._timeoutId = setTimeout(() => {
+                    msgEl.style.display = 'none';
+                }, timeout);
+            }
+        }
+
+        // --- Language UI text (static parts) ---
+        function refreshLanguageStaticUI() {
+            const menuTitle = document.querySelector('#expanded-menu h2');
+            const saveLabel = document.querySelector('#save-ui span');
+            const themeLabel = document.querySelector('#theme-ui span');
+            const langLabel = document.querySelector('#lang-ui span');
+            const closeBtn = document.getElementById('close-menu-btn');
+            const restartRunBtn = document.querySelector('#save-ui button[data-slot="restart"]');
+            const startText = document.getElementById('start-text');
+
+            applyDirForLang();
+
+            if (menuTitle) {
+                if (currentLang === 'en') {
+                    menuTitle.textContent = 'PAUSE / MENU';
+                } else if (currentLang === 'zh') {
+                    menuTitle.textContent = '暂停 / 菜单';
+                } else {
+                    menuTitle.textContent = 'إيقاف مؤقت / قائمة';
+                }
+            }
+            if (saveLabel) {
+                if (currentLang === 'en') {
+                    saveLabel.textContent = 'Saves:';
+                } else if (currentLang === 'zh') {
+                    saveLabel.textContent = '存档：';
+                } else {
+                    saveLabel.textContent = 'الحفظات:';
+                }
+            }
+            if (themeLabel) {
+                if (currentLang === 'en') {
+                    themeLabel.textContent = 'Theme:';
+                } else if (currentLang === 'zh') {
+                    themeLabel.textContent = '主题：';
+                } else {
+                    themeLabel.textContent = 'السمة:';
+                }
+            }
+            if (langLabel) {
+                if (currentLang === 'en') {
+                    langLabel.textContent = 'Language:';
+                } else if (currentLang === 'zh') {
+                    langLabel.textContent = '语言：';
+                } else {
+                    langLabel.textContent = 'اللغة:';
+                }
+            }
+            if (closeBtn) {
+                if (currentLang === 'en') {
+                    closeBtn.textContent = 'Resume Game';
+                } else if (currentLang === 'zh') {
+                    closeBtn.textContent = '继续游戏';
+                } else {
+                    closeBtn.textContent = 'متابعة اللعبة';
+                }
+            }
+            if (restartRunBtn) {
+                if (currentLang === 'en') {
+                    restartRunBtn.textContent = 'Restart Run';
+                } else if (currentLang === 'zh') {
+                    restartRunBtn.textContent = '重新开始一轮';
+                } else {
+                    restartRunBtn.textContent = 'إعادة الجولة';
+                }
+            }
+            if (startText) {
+                if (currentLang === 'en') {
+                    startText.textContent = 'START GAME ↓';
+                } else if (currentLang === 'zh') {
+                    startText.textContent = '开始游戏 ↓';
+                } else {
+                    startText.textContent = 'ابدأ اللعبة ↓';
+                }
+            }
+
+            // Localize Save/Load button labels
+            const saveButtons = document.querySelectorAll('#save-ui button[data-slot][data-action]');
+            saveButtons.forEach(btn => {
+                const slot = btn.dataset.slot;
+                const action = btn.dataset.action;
+                if (slot === 'restart') return;
+                const num = slot ? slot.replace('slot', '') : '';
+                if (!num) return;
+
+                if (currentLang === 'en') {
+                    if (action === 'save') btn.textContent = 'Save ' + num;
+                    if (action === 'load') btn.textContent = 'Load ' + num;
+                } else if (currentLang === 'zh') {
+                    if (action === 'save') btn.textContent = '存档 ' + num;
+                    if (action === 'load') btn.textContent = '读档 ' + num;
+                } else {
+                    if (action === 'save') btn.textContent = 'حفظ ' + num;
+                    if (action === 'load') btn.textContent = 'تحميل ' + num;
+                }
+            });
+
+            // Localize theme buttons text
+            const themeButtons = document.querySelectorAll('#theme-ui button[data-theme]');
+            themeButtons.forEach(btn => {
+                const mode = btn.dataset.theme;
+                if (mode === 'system') {
+                    if (currentLang === 'en') {
+                        btn.textContent = 'System';
+                    } else if (currentLang === 'zh') {
+                        btn.textContent = '跟随系统';
+                    } else {
+                        btn.textContent = 'النظام';
+                    }
+                } else if (mode === 'light') {
+                    if (currentLang === 'en') {
+                        btn.textContent = 'Light';
+                    } else if (currentLang === 'zh') {
+                        btn.textContent = '浅色';
+                    } else {
+                        btn.textContent = 'فاتح';
+                    }
+                } else if (mode === 'dark') {
+                    if (currentLang === 'en') {
+                        btn.textContent = 'Dark';
+                    } else if (currentLang === 'zh') {
+                        btn.textContent = '深色';
+                    } else {
+                        btn.textContent = 'داكن';
+                    }
+                }
+            });
+
+            updateInventoryUI();
+        }
+
+        function refreshLanguageForCurrentMode() {
+            if (currentMode === 'menu') {
+                loadMenu();
+            } else if (currentMode === 'maze') {
+                showMazeRoom(currentRoomRow, currentRoomCol, true);
+            } else if (currentMode === 'puzzle') {
+                const instr = document.getElementById('instructions');
+                if (currentLang === 'en') {
+                    instr.innerHTML = `
+                        <h2>Gravity Puzzle Room</h2>
+                        <p>Use <b>Arrow Keys</b> or the <b>Joystick</b> to tilt the floor.</p>
+                        <p>Roll the ball into the <b>green zone</b>.</p>
+                        <p>Don't fall off!</p>
+                    `;
+                } else if (currentLang === 'zh') {
+                    instr.innerHTML = `
+                        <h2>重力谜题房间</h2>
+                        <p>使用<b>方向键</b>或屏幕<b>摇杆</b>来倾斜地板。</p>
+                        <p>把球滚进<b>绿色区域</b>。</p>
+                        <p>注意不要掉下去！</p>
+                    `;
+                } else {
+                    instr.innerHTML = `
+                        <h2>غرفة لغز الجاذبية</h2>
+                        <p>استخدم <b>أسهم لوحة المفاتيح</b> أو <b>عصا التحكم</b> لإمالة الأرضية.</p>
+                        <p>دحرج الكرة إلى <b>المنطقة الخضراء</b>.</p>
+                        <p>إياك أن تسقط خارج الحافة!</p>
+                    `;
+                }
+            } else if (currentMode === 'ending') {
+                loadEnding();
+            }
+        }
+
+        // --- Input / interaction ---
+        function onPointerDown(event) {
+            const menu = document.getElementById('expanded-menu');
+            if (menu.classList.contains('open')) return;
+            
+            if (event.target.closest('#joystick-zone')) return;
+            if (event.target.closest('.header-btn')) return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            let clickable = [];
+            if (currentMode === "menu") {
+                clickable = menuGroup.children;
+            } else if (currentMode === "maze") {
+                clickable = mazeRooms[currentRoomRow][currentRoomCol].children;
+            } else if (currentMode === "puzzle") {
+                clickable = puzzleGroup.children;
+            } else {
                 return;
             }
 
-            if (obj.userData.type === "door") {
-                const kind = obj.userData.kind || "mazeDoor";
+            const hits = raycaster.intersectObjects(clickable, true);
+            if (hits.length === 0) return;
 
-                if (kind === "mazeDoor") {
-                    const nr = obj.userData.row;
-                    const nc = obj.userData.col;
-                    showMazeRoom(nr, nc);
-                    return;
-                }
+            const obj = hits[0].object;
 
-                if (kind === "finalExit") {
-                    if (!hasKey) {
-                        showStatus("The portal is sealed. A key-shaped slot glows faintly.");
+            if (currentMode === "menu" && obj.userData.type === "startGame") {
+                showMazeRoom(CENTER_ROW, CENTER_COL);
+                return;
+            }
+
+            if (currentMode === "maze") {
+                if (obj.userData.type === "item") {
+                    const id = obj.userData.itemId;
+                    if (!inventory.has(id)) {
+                        inventory.add(id);
+                        updateInventoryUI();
+                        const name = getItemDisplayName(id);
+                        let msg;
+                        if (currentLang === 'en') {
+                            msg = "Picked up " + name + "!";
+                        } else if (currentLang === 'zh') {
+                            msg = "拾取了 " + name + "！";
+                        } else {
+                            msg = "لقد حصلت على " + name + "!";
+                        }
+                        showStatus(msg);
+                    }
+
+                    if (inventory.has("ball") && inventory.has("plate") && !hasKey) {
+                        returnRoomRow = currentRoomRow;
+                        returnRoomCol = currentRoomCol;
+
+                        startScreenShake(0.45, 0.8);
+                        let msg;
+                        if (currentLang === 'en') {
+                            msg = "The floor trembles... you are dragged elsewhere!";
+                        } else if (currentLang === 'zh') {
+                            msg = "地面开始震动……你被突然拖向某个地方！";
+                        } else {
+                            msg = "الأرض تهتز… يتم سحبك إلى مكان آخر!";
+                        }
+                        showStatus(msg, 2000);
+                        saveGame(AUTO_SLOT);
+                        setTimeout(() => {
+                            loadPuzzleScene();
+                        }, 800);
                     } else {
-                        showStatus("You raise the key. The portal roars to life...");
-                        loadEnding();
+                        saveGame(AUTO_SLOT);
                     }
                     return;
                 }
+
+                if (obj.userData.type === "door") {
+                    const kind = obj.userData.kind || "mazeDoor";
+
+                    if (kind === "mazeDoor") {
+                        const nr = obj.userData.row;
+                        const nc = obj.userData.col;
+                        showMazeRoom(nr, nc);
+                        return;
+                    }
+
+                    if (kind === "finalExit") {
+                        if (!hasKey) {
+                            let msg;
+                            if (currentLang === 'en') {
+                                msg = "The portal is sealed. A key-shaped slot glows faintly.";
+                            } else if (currentLang === 'zh') {
+                                msg = "传送门被封印了，上面有一个微微发光的钥匙孔。";
+                            } else {
+                                msg = "البوابة مغلقة. يوجد فتحة على شكل مفتاح تلمع بخفوت.";
+                            }
+                            showStatus(msg);
+                        } else {
+                            let msg;
+                            if (currentLang === 'en') {
+                                msg = "You raise the key. The portal roars to life...";
+                            } else if (currentLang === 'zh') {
+                                msg = "你举起钥匙，传送门瞬间被唤醒……";
+                            } else {
+                                msg = "ترفع المفتاح فتستجيب البوابة بصوت عال…";
+                            }
+                            showStatus(msg);
+                            loadEnding();
+                        }
+                        return;
+                    }
+                }
             }
         }
-    }
 
-    // --- Puzzle control & physics ---
-    function restartGame() {
-        if (!ballBody || !floorBody) return;
-        gameActive = true;
+        // --- Puzzle control & physics ---
+        function restartGame() {
+            if (!ballBody || !floorBody) return;
+            gameActive = true;
 
-        ballBody.position.set(-5, 5, -5);
-        ballBody.velocity.set(0, 0, 0);
-        ballBody.angularVelocity.set(0, 0, 0);
+            ballBody.position.set(-5, 5, -5);
+            ballBody.velocity.set(0, 0, 0);
+            ballBody.angularVelocity.set(0, 0, 0);
 
-        floorBody.quaternion.setFromEuler(0, 0, 0);
+            floorBody.quaternion.setFromEuler(0, 0, 0);
 
-        const statusEl = document.getElementById('status-msg');
-        statusEl.style.display = 'none';
-        statusEl.className = '';
-    }
-
-    function updatePhysics() {
-        if (currentMode !== "puzzle") return;
-        if (!ballBody || !floorBody) return;
-
-        if (gameActive) {
-            const maxTilt = 0.3;
-
-            const currentEuler = new CANNON.Vec3();
-            floorBody.quaternion.toEuler(currentEuler);
-
-            let targetX = 0;
-            let targetZ = 0;
-
-            if (keys.ArrowUp) targetX = -maxTilt;
-            if (keys.ArrowDown) targetX = maxTilt;
-            if (keys.ArrowLeft) targetZ = maxTilt;
-            if (keys.ArrowRight) targetZ = -maxTilt;
-
-            currentEuler.x += (targetX - currentEuler.x) * 0.05;
-            currentEuler.z += (targetZ - currentEuler.z) * 0.05;
-
-            floorBody.quaternion.setFromEuler(currentEuler.x, 0, currentEuler.z);
+            const statusEl = document.getElementById('status-msg');
+            statusEl.style.display = 'none';
+            statusEl.className = '';
         }
 
-        world.step(timeStep);
+        function updatePhysics() {
+            if (currentMode !== "puzzle") return;
+            if (!ballBody || !floorBody) return;
 
-        ballMesh.position.copy(ballBody.position);
-        ballMesh.quaternion.copy(ballBody.quaternion);
+            if (gameActive) {
+                const maxTilt = 0.3;
 
-        floorMesh.position.copy(floorBody.position);
-        floorMesh.quaternion.copy(floorBody.quaternion);
+                const currentEuler = new CANNON.Vec3();
+                floorBody.quaternion.toEuler(currentEuler);
 
-        if (gameActive) {
-            checkWinCondition();
-        }
-    }
+                let targetX = 0;
+                let targetZ = 0;
 
-    function checkWinCondition() {
-        if (ballBody.position.y < -10) {
-            endGame(false);
-        }
+                if (keys.ArrowUp) targetX = -maxTilt;
+                if (keys.ArrowDown) targetX = maxTilt;
+                if (keys.ArrowLeft) targetZ = maxTilt;
+                if (keys.ArrowRight) targetZ = -maxTilt;
 
-        const dx = ballBody.position.x - TARGET_POS.x;
-        const dz = ballBody.position.z - TARGET_POS.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
+                currentEuler.x += (targetX - currentEuler.x) * 0.05;
+                currentEuler.z += (targetZ - currentEuler.z) * 0.05;
 
-        if (dist < TARGET_RADIUS && ballBody.position.y > -1) {
-            endGame(true);
-        }
-    }
-
-    function endGame(isWin) {
-        gameActive = false;
-        const statusEl = document.getElementById('status-msg');
-        statusEl.style.display = 'block';
-
-        if (isWin) {
-            statusEl.textContent = "SUCCESS!\nYou obtained a key.";
-            statusEl.className = 'win';
-
-            if (!hasKey) {
-                hasKey = true;
-                inventory.add("key");
-                updateInventoryUI();
-                showStatus("A strange key appears in your hand.\nYou are pulled back into the maze.", 2500);
+                floorBody.quaternion.setFromEuler(currentEuler.x, 0, currentEuler.z);
             }
 
-            setTimeout(() => {
-                showMazeRoom(returnRoomRow, returnRoomCol);
-            }, 1500);
-        } else {
-            statusEl.textContent = "FAILURE";
-            statusEl.className = 'lose';
-            showStatus("Press the Restart button to retry.");
-        }
-        saveGame(AUTO_SLOT);
-    }
+            world.step(timeStep);
 
-    // --- Misc ---
-    function onWindowResize() {
-        const aspect = window.innerWidth / window.innerHeight;
-        const isPortrait = aspect < 1.0;
+            ballMesh.position.copy(ballBody.position);
+            ballMesh.quaternion.copy(ballBody.quaternion);
 
-        // Dynamic Zoom Scaling for Ortho (Maze)
-        let effectiveViewSize = viewSize;
-        if (isPortrait) {
-            effectiveViewSize = viewSize * 1.5;
+            floorMesh.position.copy(floorBody.position);
+            floorMesh.quaternion.copy(floorBody.quaternion);
+
+            if (gameActive) {
+                checkWinCondition();
+            }
         }
 
-        orthoCamera.left   = -effectiveViewSize * aspect;
-        orthoCamera.right  =  effectiveViewSize * aspect;
-        orthoCamera.top    =  effectiveViewSize;
-        orthoCamera.bottom = -effectiveViewSize;
-        orthoCamera.updateProjectionMatrix();
+        function checkWinCondition() {
+            if (ballBody.position.y < -10) {
+                endGame(false);
+            }
 
-        // Dynamic Zoom Scaling for Perspective (Puzzle + Menu)
-        // If portrait, zoom out (increase Z)
-        let perspDist = isPortrait ? 30 : 15;
-        let perspHeight = 12;
+            const dx = ballBody.position.x - TARGET_POS.x;
+            const dz = ballBody.position.z - TARGET_POS.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
 
-        // If in puzzle mode, use specific puzzle camera settings
-        if (currentMode === 'puzzle') {
-            perspDist = isPortrait ? 45 : 25;
-            perspHeight = isPortrait ? 35 : 20;
+            if (dist < TARGET_RADIUS && ballBody.position.y > -1) {
+                endGame(true);
+            }
         }
 
-        perspCamera.aspect = aspect;
-        
-        // Update position only to prevent jumpiness, mostly handled by state loaders
-        if (currentMode === 'puzzle' || currentMode === 'menu') {
-             perspCamera.position.set(0, perspHeight, perspDist);
-             perspCamera.lookAt(0, (currentMode === 'menu' ? 10 : 0), 0);
+        function endGame(isWin) {
+            gameActive = false;
+            const statusEl = document.getElementById('status-msg');
+            statusEl.style.display = 'block';
+
+            if (isWin) {
+                if (currentLang === 'en') {
+                    statusEl.textContent = "SUCCESS!\nYou obtained a key.";
+                } else if (currentLang === 'zh') {
+                    statusEl.textContent = "成功！\n你获得了一把钥匙。";
+                } else {
+                    statusEl.textContent = "نجاح!\nلقد حصلت على مفتاح.";
+                }
+                statusEl.className = 'win';
+
+                if (!hasKey) {
+                    hasKey = true;
+                    inventory.add("key");
+                    updateInventoryUI();
+                    let msg;
+                    if (currentLang === 'en') {
+                        msg = "A strange key appears in your hand.\nYou are pulled back into the maze.";
+                    } else if (currentLang === 'zh') {
+                        msg = "一把奇怪的钥匙突然出现在你手中。\n你被拉回了迷宫。";
+                    } else {
+                        msg = "مفتاح غريب يظهر في يدك.\nيتم سحبك مجددًا إلى المتاهة.";
+                    }
+                    showStatus(msg, 2500);
+                }
+
+                setTimeout(() => {
+                    showMazeRoom(returnRoomRow, returnRoomCol);
+                }, 1500);
+            } else {
+                if (currentLang === 'en') {
+                    statusEl.textContent = "FAILURE";
+                } else if (currentLang === 'zh') {
+                    statusEl.textContent = "失败";
+                } else {
+                    statusEl.textContent = "فشل";
+                }
+                statusEl.className = 'lose';
+                let msg;
+                if (currentLang === 'en') {
+                    msg = "Press the Restart button to retry.";
+                } else if (currentLang === 'zh') {
+                    msg = "点击“重新开始”按钮再试一次。";
+                } else {
+                    msg = "اضغط زر \"إعادة الجولة\" للمحاولة مرة أخرى.";
+                }
+                showStatus(msg);
+            }
+            saveGame(AUTO_SLOT);
         }
-        perspCamera.updateProjectionMatrix();
 
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    }
+        // --- Misc ---
+        function onWindowResize() {
+            const aspect = window.innerWidth / window.innerHeight;
+            const isPortrait = aspect < 1.0;
 
-    function animate() {
-        requestAnimationFrame(animate);
-        updatePhysics();
-        updateScreenShake();
-        renderer.render(scene, camera);
-    }
+            let effectiveViewSize = viewSize;
+            if (isPortrait) {
+                effectiveViewSize = viewSize * 1.5;
+            }
+
+            orthoCamera.left   = -effectiveViewSize * aspect;
+            orthoCamera.right  =  effectiveViewSize * aspect;
+            orthoCamera.top    =  effectiveViewSize;
+            orthoCamera.bottom = -effectiveViewSize;
+            orthoCamera.updateProjectionMatrix();
+
+            let perspDist = isPortrait ? 30 : 15;
+            let perspHeight = 12;
+
+            if (currentMode === 'puzzle') {
+                perspDist = isPortrait ? 45 : 25;
+                perspHeight = isPortrait ? 35 : 20;
+            }
+
+            perspCamera.aspect = aspect;
+            if (currentMode === 'puzzle' || currentMode === 'menu') {
+                perspCamera.position.set(0, perspHeight, perspDist);
+                perspCamera.lookAt(0, (currentMode === 'menu' ? 10 : 0), 0);
+            }
+            perspCamera.updateProjectionMatrix();
+
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updatePhysics();
+            updateScreenShake();
+            renderer.render(scene, camera);
+        }
     </script>
 </body>
 </html>
