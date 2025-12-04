@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>F2 Prototype: Gravity Escape</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>F2 Prototype: Gravity Escape (Touch Enabled)</title>
     <style>
         :root {
             color-scheme: light dark;
@@ -15,6 +15,10 @@
             font-family: 'Courier New', Courier, monospace;
             background-color: #111;
             color: #fff;
+            /* Prevent touch actions like pull-to-refresh on mobile */
+            touch-action: none; 
+            user-select: none;
+            -webkit-user-select: none;
         }
 
         #ui-layer {
@@ -30,6 +34,7 @@
             padding: 10px;
             border-radius: 4px;
             max-width: 340px;
+            pointer-events: auto; /* Allow clicking text if needed */
         }
         #inventory-ui {
             position: absolute;
@@ -54,6 +59,7 @@
             text-align: center;
             z-index: 20;
             white-space: pre-line;
+            pointer-events: none;
         }
         .win { color: #4ade80; }
         .lose { color: #f87171; }
@@ -74,7 +80,7 @@
 
         #message {
             position: absolute;
-            bottom: 30px;
+            bottom: 80px; /* Moved up slightly to avoid touch controls */
             left: 50%;
             transform: translateX(-50%);
             color: inherit;
@@ -84,6 +90,7 @@
             font-size: 16px;
             display: none;
             z-index: 15;
+            pointer-events: none;
         }
 
         #save-ui {
@@ -105,6 +112,7 @@
             margin: 1px 2px;
             font-size: 11px;
             cursor: pointer;
+            padding: 4px 8px; /* Larger touch target */
         }
 
         #theme-ui {
@@ -133,11 +141,70 @@
             background: rgba(15, 23, 42, 0.7);
             color: inherit;
             border-radius: 3px;
-            padding: 2px 6px;
+            padding: 4px 8px; /* Larger touch target */
         }
         #theme-ui button.active {
             border-color: #22c55e;
             font-weight: bold;
+        }
+
+        /* --- TOUCH CONTROLS --- */
+        #touch-controls {
+            position: absolute;
+            bottom: 60px;
+            right: 20px;
+            display: none; /* Hidden by default, shown in puzzle */
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            z-index: 30;
+        }
+        .dpad-row {
+            display: flex;
+            gap: 10px;
+        }
+        .dpad-btn {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            user-select: none;
+            touch-action: none;
+        }
+        .dpad-btn:active, .dpad-btn.pressed {
+            background: rgba(74, 222, 128, 0.5);
+            border-color: #4ade80;
+        }
+
+        #puzzle-restart-btn {
+            position: absolute;
+            bottom: 60px;
+            left: 20px;
+            display: none; /* Hidden by default */
+            z-index: 30;
+            width: 60px;
+            height: 60px;
+            background: rgba(248, 113, 113, 0.3);
+            border: 2px solid rgba(248, 113, 113, 0.5);
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            touch-action: none;
+        }
+        #puzzle-restart-btn:active {
+            background: rgba(248, 113, 113, 0.6);
         }
 
         @media (prefers-color-scheme: light) {
@@ -145,43 +212,37 @@
                 background-color: #dbeafe;
                 color: #111827;
             }
-
             #instructions {
                 background: rgba(255, 255, 255, 0.9);
                 color: #111827;
             }
-
             #inventory-ui {
                 background: rgba(255, 255, 255, 0.85);
                 color: #111827;
             }
-
             #message {
                 background: rgba(15, 23, 42, 0.9);
                 color: #e5e7eb;
             }
-
-            #save-ui {
-                background: rgba(255, 255, 255, 0.75);
-                color: #111827;
-            }
-
-            #theme-ui {
+            #save-ui, #theme-ui {
                 background: rgba(255, 255, 255, 0.75);
                 color: #111827;
             }
             #theme-ui button {
                 background: rgba(241, 245, 249, 0.9);
             }
-
             #start-text {
                 color: #111827;
                 text-shadow: 2px 2px 4px #ffffff88;
             }
+            .dpad-btn, #puzzle-restart-btn {
+                background: rgba(0, 0, 0, 0.1);
+                border-color: rgba(0, 0, 0, 0.2);
+                color: #111;
+            }
         }
     </style>
 
-    <!-- Import Maps for Three.js and Cannon-es -->
     <script type="importmap">
         {
             "imports": {
@@ -201,7 +262,17 @@
     <div id="status-msg"></div>
     <div id="message"></div>
 
-    <div id="start-text">START GAME ↓</div>
+    <div id="start-text">TAP TO START ↓</div>
+
+    <div id="puzzle-restart-btn">↺</div>
+    <div id="touch-controls">
+        <div class="dpad-btn" id="btn-up">▲</div>
+        <div class="dpad-row">
+            <div class="dpad-btn" id="btn-left">◀</div>
+            <div class="dpad-btn" id="btn-right">▶</div>
+        </div>
+        <div class="dpad-btn" id="btn-down">▼</div>
+    </div>
 
     <div id="save-ui">
         <span>Saves:</span>
@@ -211,13 +282,12 @@
         <button data-slot="slot2" data-action="load">Load 2</button>
         <button data-slot="slot3" data-action="save">Save 3</button>
         <button data-slot="slot3" data-action="load">Load 3</button>
-        <!-- Full run restart button -->
-        <button data-slot="restart" data-action="restart">Restart Run</button>
+        <button data-slot="restart" data-action="restart">Restart</button>
     </div>
 
     <div id="theme-ui">
         <span>Theme:</span>
-        <button data-theme="system" class="active">System</button>
+        <button data-theme="system" class="active">Auto</button>
         <button data-theme="light">Light</button>
         <button data-theme="dark">Dark</button>
     </div>
@@ -263,15 +333,13 @@
         // Lighting and theme
         let ambientLight;
         let dirLight;
-        let themeMode = "system"; // system | light | dark
+        let themeMode = "system"; 
         let systemPrefersDark = false;
 
-        // Materials that respond to theme
         const mazeFloorMats = [];
         const mazeWallMats = [];
         let puzzleFloorMat = null;
 
-        // Groups for non-maze scenes
         let menuGroup;
         let puzzleGroup;
 
@@ -289,16 +357,15 @@
         let hasKey = false;
         let gameActive = false;
 
-        // Random placement
         let ballRoomCoord = null;
         let plateRoomCoord = null;
         let portalRoomCoord = null;
 
-        // --- Save system globals ---
         const SAVE_PREFIX = "gravityEscape_";
         const AUTO_SLOT = "autosave";
         let pendingLoadData = null;
 
+        // --- Load existing save ---
         try {
             const raw = localStorage.getItem(SAVE_PREFIX + AUTO_SLOT);
             if (raw) {
@@ -333,31 +400,18 @@
         animate();
 
         function init() {
-            // THREE.js setup
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x202025);
             scene.fog = new THREE.Fog(0x202025, 10, 60);
 
             const aspect = window.innerWidth / window.innerHeight;
 
-            // Perspective camera (menu, puzzle, ending)
-            perspCamera = new THREE.PerspectiveCamera(
-                45,
-                aspect,
-                0.1,
-                100
-            );
+            perspCamera = new THREE.PerspectiveCamera(45, aspect, 0.1, 100);
             perspCamera.position.set(0, 20, 25);
             perspCamera.lookAt(0, 0, 0);
 
-            // Orthographic camera (maze rooms)
             orthoCamera = new THREE.OrthographicCamera(
-                -viewSize * aspect,
-                viewSize * aspect,
-                viewSize,
-                -viewSize,
-                0.1,
-                100
+                -viewSize * aspect, viewSize * aspect, viewSize, -viewSize, 0.1, 100
             );
             orthoCamera.position.set(0, 25, 0);
             orthoCamera.lookAt(0, 0, 0);
@@ -369,6 +423,8 @@
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.shadowMap.enabled = true;
+            // Handle high DPI screens
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             document.body.appendChild(renderer.domElement);
 
             ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -383,24 +439,19 @@
             dirLight.shadow.camera.right = 20;
             scene.add(dirLight);
 
-            // CANNON World
             world = new CANNON.World({
                 gravity: new CANNON.Vec3(0, -9.82, 0)
             });
 
             const physicsMaterial = new CANNON.Material('physics');
             const physicsContactMaterial = new CANNON.ContactMaterial(
-                physicsMaterial,
-                physicsMaterial,
-                { friction: 0.5, restitution: 0.3 }
+                physicsMaterial, physicsMaterial, { friction: 0.5, restitution: 0.3 }
             );
             world.addContactMaterial(physicsContactMaterial);
 
-            // Groups
             menuGroup = new THREE.Group();
             scene.add(menuGroup);
 
-            // Maze rooms groups
             for (let r = 0; r < NUM_ROWS; r++) {
                 mazeRooms[r] = [];
                 for (let c = 0; c < NUM_COLS; c++) {
@@ -416,10 +467,7 @@
             // --- MENU ---
             {
                 const startButtonGeo = new THREE.PlaneGeometry(6, 2);
-                const startButtonMat = new THREE.MeshBasicMaterial({
-                    color: 0x44ff88,
-                    side: THREE.DoubleSide
-                });
+                const startButtonMat = new THREE.MeshBasicMaterial({ color: 0x44ff88, side: THREE.DoubleSide });
                 const startButton = new THREE.Mesh(startButtonGeo, startButtonMat);
                 startButton.position.set(0, 10, 0);
                 startButton.rotation.x = -Math.PI / 4;
@@ -427,7 +475,7 @@
                 menuGroup.add(startButton);
             }
 
-            // Helper: build basic room
+            // Build Rooms
             function buildBasicRoom(group) {
                 const floorGeo = new THREE.BoxGeometry(12, 1, 12);
                 const floorMat = new THREE.MeshStandardMaterial({ color: 0x444466 });
@@ -442,31 +490,18 @@
                 const wallMat = new THREE.MeshStandardMaterial({ color: 0x222233 });
                 mazeWallMats.push(wallMat);
 
-                const backWall = new THREE.Mesh(wallGeoZ, wallMat);
-                backWall.position.set(0, 0.6, -6);
-                group.add(backWall);
-
-                const frontWall = new THREE.Mesh(wallGeoZ, wallMat);
-                frontWall.position.set(0, 0.6, 6);
-                group.add(frontWall);
-
-                const leftWall = new THREE.Mesh(wallGeoX, wallMat);
-                leftWall.position.set(-6, 0.6, 0);
-                group.add(leftWall);
-
-                const rightWall = new THREE.Mesh(wallGeoX, wallMat);
-                rightWall.position.set(6, 0.6, 0);
-                group.add(rightWall);
+                const backWall = new THREE.Mesh(wallGeoZ, wallMat); backWall.position.set(0, 0.6, -6); group.add(backWall);
+                const frontWall = new THREE.Mesh(wallGeoZ, wallMat); frontWall.position.set(0, 0.6, 6); group.add(frontWall);
+                const leftWall = new THREE.Mesh(wallGeoX, wallMat); leftWall.position.set(-6, 0.6, 0); group.add(leftWall);
+                const rightWall = new THREE.Mesh(wallGeoX, wallMat); rightWall.position.set(6, 0.6, 0); group.add(rightWall);
             }
 
-            // Build all maze rooms (geometry only)
             for (let r = 0; r < NUM_ROWS; r++) {
                 for (let c = 0; c < NUM_COLS; c++) {
                     buildBasicRoom(mazeRooms[r][c]);
                 }
             }
 
-            // Add doors between adjacent rooms
             const doorGeo = new THREE.BoxGeometry(2, 3, 0.5);
             const doorMatMaze = new THREE.MeshStandardMaterial({ color: 0x64748b });
 
@@ -477,18 +512,10 @@
                 door.userData.row = targetRow;
                 door.userData.col = targetCol;
 
-                if (direction === "north") {
-                    door.position.set(0, 1.5, -5.75);
-                } else if (direction === "south") {
-                    door.position.set(0, 1.5, 5.75);
-                } else if (direction === "west") {
-                    door.rotation.y = Math.PI / 2;
-                    door.position.set(-5.75, 1.5, 0);
-                } else if (direction === "east") {
-                    door.rotation.y = Math.PI / 2;
-                    door.position.set(5.75, 1.5, 0);
-                }
-
+                if (direction === "north") door.position.set(0, 1.5, -5.75);
+                else if (direction === "south") door.position.set(0, 1.5, 5.75);
+                else if (direction === "west") { door.rotation.y = Math.PI / 2; door.position.set(-5.75, 1.5, 0); }
+                else if (direction === "east") { door.rotation.y = Math.PI / 2; door.position.set(5.75, 1.5, 0); }
                 group.add(door);
             }
 
@@ -502,7 +529,6 @@
                 }
             }
 
-            // --- Random placement of ball / plate / portal ---
             if (!ballRoomCoord || !plateRoomCoord || !portalRoomCoord) {
                 const coords = [];
                 for (let r = 0; r < NUM_ROWS; r++) {
@@ -517,7 +543,7 @@
                 if (!portalRoomCoord) portalRoomCoord = coords[2];
             }
 
-            // Place ball
+            // Ball
             {
                 const { r, c } = ballRoomCoord;
                 const group = mazeRooms[r][c];
@@ -531,7 +557,7 @@
                 group.add(ball);
             }
 
-            // Place plate
+            // Plate
             {
                 const { r, c } = plateRoomCoord;
                 const group = mazeRooms[r][c];
@@ -545,761 +571,544 @@
                 group.add(plate);
             }
 
-            // Place locked portal door in portalRoom on an outer wall
+            // Portal
             {
                 const { r, c } = portalRoomCoord;
                 const group = mazeRooms[r][c];
                 const portalGeo = new THREE.BoxGeometry(2, 3, 0.5);
                 const portalMat = new THREE.MeshStandardMaterial({ color: 0x8b5cf6 });
+                const portalDoor = new THREE.Mesh(portalGeo, portalMat);
+                portalDoor.userData.type = "door";
+                portalDoor.userData.kind = "finalExit";
+                portalDoor.userData.target = "ending";
 
-            const portalDoor = new THREE.Mesh(portalGeo, portalMat);
-            portalDoor.userData.type = "door";
-            portalDoor.userData.kind = "finalExit";
-            portalDoor.userData.target = "ending";
-
-            if (r === 0) {
-                portalDoor.position.set(0, 1.5, -5.75);
-            } else if (r === NUM_ROWS - 1) {
-                portalDoor.position.set(0, 1.5, 5.75);
-            } else if (c === 0) {
-                portalDoor.rotation.y = Math.PI / 2;
-                portalDoor.position.set(-5.75, 1.5, 0);
-            } else {
-                portalDoor.rotation.y = Math.PI / 2;
-                portalDoor.position.set(5.75, 1.5, 0);
+                if (r === 0) portalDoor.position.set(0, 1.5, -5.75);
+                else if (r === NUM_ROWS - 1) portalDoor.position.set(0, 1.5, 5.75);
+                else if (c === 0) { portalDoor.rotation.y = Math.PI / 2; portalDoor.position.set(-5.75, 1.5, 0); }
+                else { portalDoor.rotation.y = Math.PI / 2; portalDoor.position.set(5.75, 1.5, 0); }
+                group.add(portalDoor);
             }
 
-            group.add(portalDoor);
-        }
+            // --- PUZZLE ROOM ---
+            {
+                const floorGeoB = new THREE.BoxGeometry(20, 1, 20);
+                const floorMatB = new THREE.MeshStandardMaterial({ color: 0x666644 });
+                puzzleFloorMat = floorMatB;
+                floorMesh = new THREE.Mesh(floorGeoB, floorMatB);
+                floorMesh.receiveShadow = true;
+                puzzleGroup.add(floorMesh);
 
-        // --- PUZZLE ROOM (physics puzzle) ---
-        {
-            const floorGeoB = new THREE.BoxGeometry(20, 1, 20);
-            const floorMatB = new THREE.MeshStandardMaterial({ color: 0x666644 });
-            puzzleFloorMat = floorMatB;
-            floorMesh = new THREE.Mesh(floorGeoB, floorMatB);
-            floorMesh.receiveShadow = true;
-            puzzleGroup.add(floorMesh);
+                const floorShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
+                floorBody = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC, material: physicsMaterial });
+                floorBody.addShape(floorShape);
+                world.addBody(floorBody);
 
-            const floorShape = new CANNON.Box(new CANNON.Vec3(10, 0.5, 10));
-            floorBody = new CANNON.Body({
-                mass: 0,
-                type: CANNON.Body.KINEMATIC,
-                material: physicsMaterial
+                const ballRadius = 0.8;
+                const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
+                const ballMat = new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.4 });
+                ballMesh = new THREE.Mesh(ballGeo, ballMat);
+                ballMesh.castShadow = true;
+                puzzleGroup.add(ballMesh);
+
+                const ballShape = new CANNON.Sphere(ballRadius);
+                ballBody = new CANNON.Body({ mass: 5, shape: ballShape, material: physicsMaterial });
+                ballBody.position.set(-5, 5, -5);
+                ballBody.linearDamping = 0.1;
+                world.addBody(ballBody);
+
+                const targetGeo = new THREE.CylinderGeometry(TARGET_RADIUS, TARGET_RADIUS, 0.1, 32);
+                const targetMat = new THREE.MeshBasicMaterial({ color: 0x4ade80, opacity: 0.5, transparent: true });
+                targetMesh = new THREE.Mesh(targetGeo, targetMat);
+                targetMesh.position.set(TARGET_POS.x, 0.6, TARGET_POS.z);
+                floorMesh.add(targetMesh);
+            }
+
+            // --- EVENT LISTENERS ---
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('pointerdown', onPointerDown);
+            
+            // Keyboard controls
+            window.addEventListener('keydown', (e) => {
+                if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
+                if (e.key.toLowerCase() === 'r') restartGame();
             });
-            floorBody.addShape(floorShape);
-            world.addBody(floorBody);
-
-            const ballRadius = 0.8;
-            const ballGeo = new THREE.SphereGeometry(ballRadius, 32, 32);
-            const ballMat = new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.4 });
-            ballMesh = new THREE.Mesh(ballGeo, ballMat);
-            ballMesh.castShadow = true;
-            puzzleGroup.add(ballMesh);
-
-            const ballShape = new CANNON.Sphere(ballRadius);
-            ballBody = new CANNON.Body({
-                mass: 5,
-                shape: ballShape,
-                material: physicsMaterial
+            window.addEventListener('keyup', (e) => {
+                if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
             });
-            ballBody.position.set(-5, 5, -5);
-            ballBody.linearDamping = 0.1;
-            world.addBody(ballBody);
 
-            const targetGeo = new THREE.CylinderGeometry(
-                TARGET_RADIUS,
-                TARGET_RADIUS,
-                0.1,
-                32
-            );
-            const targetMat = new THREE.MeshBasicMaterial({
-                color: 0x4ade80,
-                opacity: 0.5,
-                transparent: true
-            });
-            targetMesh = new THREE.Mesh(targetGeo, targetMat);
-            targetMesh.position.set(TARGET_POS.x, 0.6, TARGET_POS.z);
-            floorMesh.add(targetMesh);
-        }
+            // --- Touch UI Logic ---
+            setupTouchControls();
 
-        // Events
-        window.addEventListener('resize', onWindowResize);
-        window.addEventListener('pointerdown', onPointerDown);
-        window.addEventListener('keydown', (e) => {
-            if (keys.hasOwnProperty(e.key)) keys[e.key] = true;
-            if (e.key.toLowerCase() === 'r') restartGame();
-        });
-        window.addEventListener('keyup', (e) => {
-            if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
-        });
-
-        // Save UI handlers
-        const saveUI = document.getElementById('save-ui');
-        saveUI.addEventListener('click', (e) => {
-            const btn = e.target;
-            if (!(btn instanceof HTMLButtonElement)) return;
-            const slot = btn.dataset.slot;
-            const action = btn.dataset.action;
-            if (!action) return;
-
-            if (action === 'save' || action === 'load') {
-                if (!slot) return;
-                if (action === 'save') {
-                    saveGame(slot);
-                    showStatus("Saved to " + slot.toUpperCase(), 1000);
-                } else if (action === 'load') {
-                    loadGame(slot);
+            // Save UI
+            document.getElementById('save-ui').addEventListener('click', (e) => {
+                const btn = e.target;
+                if (!(btn instanceof HTMLButtonElement)) return;
+                const slot = btn.dataset.slot;
+                const action = btn.dataset.action;
+                if (!action) return;
+                if (action === 'save' || action === 'load') {
+                    if (!slot) return;
+                    if (action === 'save') { saveGame(slot); showStatus("Saved to " + slot.toUpperCase(), 1000); }
+                    else if (action === 'load') { loadGame(slot); }
+                } else if (action === 'restart') {
+                    fullRestart();
                 }
-            } else if (action === 'restart') {
-                fullRestart();
-            }
-        });
+            });
 
-        // Theme UI handlers
-        const themeUI = document.getElementById('theme-ui');
-        themeUI.addEventListener('click', (e) => {
-            const btn = e.target;
-            if (!(btn instanceof HTMLButtonElement)) return;
-            const mode = btn.dataset.theme;
-            if (!mode) return;
-            themeMode = mode;
+            // Theme UI
+            document.getElementById('theme-ui').addEventListener('click', (e) => {
+                const btn = e.target;
+                if (!(btn instanceof HTMLButtonElement)) return;
+                const mode = btn.dataset.theme;
+                if (!mode) return;
+                themeMode = mode;
+                updateThemeButtons();
+                recomputeTheme();
+                saveGame(AUTO_SLOT);
+            });
             updateThemeButtons();
-            recomputeTheme();
-            saveGame(AUTO_SLOT);
-        });
-        updateThemeButtons();
 
-        // Auto-save on tab close
-        window.addEventListener('beforeunload', () => {
-            saveGame(AUTO_SLOT);
-        });
+            window.addEventListener('beforeunload', () => saveGame(AUTO_SLOT));
+            updateInventoryUI();
+            setupThemeFromSystem();
 
-        updateInventoryUI();
-
-        // Set up theme from system preference
-        setupThemeFromSystem();
-
-        // Apply autosave if present, otherwise start at menu
-        if (pendingLoadData) {
-            applyLoadedData(pendingLoadData, true);
-        } else {
-            loadMenu();
+            if (pendingLoadData) applyLoadedData(pendingLoadData, true);
+            else loadMenu();
         }
-    }
 
-    // --- Utility: shuffle array ---
-    function shuffleArray(arr) {
-        for (let i = arr.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [arr[i], arr[j]] = [arr[j], arr[i]];
+        // --- Touch Control Setup ---
+        function setupTouchControls() {
+            const bindTouch = (id, key) => {
+                const el = document.getElementById(id);
+                const setKey = (val) => {
+                    keys[key] = val;
+                    if(val) el.classList.add('pressed');
+                    else el.classList.remove('pressed');
+                };
+
+                // Pointer events cover mouse and touch
+                el.addEventListener('pointerdown', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation(); // Don't trigger 3D raycast
+                    setKey(true);
+                    el.setPointerCapture(e.pointerId);
+                });
+                
+                ['pointerup', 'pointercancel', 'pointerleave'].forEach(evt => {
+                    el.addEventListener(evt, (e) => {
+                        e.preventDefault();
+                        setKey(false);
+                    });
+                });
+            };
+
+            bindTouch('btn-up', 'ArrowUp');
+            bindTouch('btn-down', 'ArrowDown');
+            bindTouch('btn-left', 'ArrowLeft');
+            bindTouch('btn-right', 'ArrowRight');
+
+            // Restart Button
+            const rBtn = document.getElementById('puzzle-restart-btn');
+            rBtn.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                restartGame();
+            });
         }
-    }
 
-    // --- Screen shake helpers ---
-    function startScreenShake(duration = 0.4, intensity = 0.6) {
-        shakeDuration = duration;
-        shakeTime = duration;
-        shakeIntensity = intensity;
-        cameraBasePosition.copy(camera.position);
-    }
-
-    function updateScreenShake() {
-        if (shakeTime <= 0) return;
-
-        const progress = 1 - shakeTime / shakeDuration;
-        const damper = 1 - progress;
-
-        const offsetX = (Math.random() - 0.5) * 2 * shakeIntensity * damper;
-        const offsetY = (Math.random() - 0.5) * 2 * shakeIntensity * damper;
-
-        camera.position.set(
-            cameraBasePosition.x + offsetX,
-            cameraBasePosition.y + offsetY,
-            cameraBasePosition.z
-        );
-
-        shakeTime -= timeStep;
-        if (shakeTime <= 0) {
-            camera.position.copy(cameraBasePosition);
-        }
-    }
-
-    // --- Visual theme helpers (light/dark) ---
-    function applyTheme(mode) {
-        if (!scene || !ambientLight || !dirLight) return;
-
-        if (mode === "dark") {
-            scene.background.set(0x050816);
-            scene.fog.color.set(0x050816);
-            ambientLight.intensity = 0.45;
-            dirLight.intensity = 0.9;
-            dirLight.color.set(0xbfd7ff);
-
-            mazeFloorMats.forEach(m => {
-                m.color.set(0x1e293b);
-                m.roughness = 0.9;
-                m.metalness = 0.0;
-            });
-            mazeWallMats.forEach(m => {
-                m.color.set(0x020617);
-                m.roughness = 0.9;
-                m.metalness = 0.0;
-            });
-            if (puzzleFloorMat) {
-                puzzleFloorMat.color.set(0x1f2933);
-                puzzleFloorMat.roughness = 0.85;
-                puzzleFloorMat.metalness = 0.05;
-            }
-        } else {
-            scene.background.set(0xcbe5ff);
-            scene.fog.color.set(0xcbe5ff);
-            ambientLight.intensity = 0.95;
-            dirLight.intensity = 0.85;
-            dirLight.color.set(0xfff2cf);
-
-            mazeFloorMats.forEach(m => {
-                m.color.set(0xe2e8f0);
-                m.roughness = 0.6;
-                m.metalness = 0.1;
-            });
-            mazeWallMats.forEach(m => {
-                m.color.set(0xf8fafc);
-                m.roughness = 0.7;
-                m.metalness = 0.0;
-            });
-            if (puzzleFloorMat) {
-                puzzleFloorMat.color.set(0xfacc6b);
-                puzzleFloorMat.roughness = 0.7;
-                puzzleFloorMat.metalness = 0.1;
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
             }
         }
-        renderer.setClearColor(scene.background);
-    }
 
-    function recomputeTheme() {
-        const effective = themeMode === "light" || themeMode === "dark"
-            ? themeMode
-            : (systemPrefersDark ? "dark" : "light");
-        applyTheme(effective);
-    }
+        function startScreenShake(duration = 0.4, intensity = 0.6) {
+            shakeDuration = duration; shakeTime = duration; shakeIntensity = intensity;
+            cameraBasePosition.copy(camera.position);
+        }
 
-    function setupThemeFromSystem() {
-        if (window.matchMedia) {
-            const mq = window.matchMedia("(prefers-color-scheme: dark)");
-            systemPrefersDark = mq.matches;
-            recomputeTheme();
+        function updateScreenShake() {
+            if (shakeTime <= 0) return;
+            const progress = 1 - shakeTime / shakeDuration;
+            const damper = 1 - progress;
+            const offsetX = (Math.random() - 0.5) * 2 * shakeIntensity * damper;
+            const offsetY = (Math.random() - 0.5) * 2 * shakeIntensity * damper;
+            camera.position.set(cameraBasePosition.x + offsetX, cameraBasePosition.y + offsetY, cameraBasePosition.z);
+            shakeTime -= timeStep;
+            if (shakeTime <= 0) camera.position.copy(cameraBasePosition);
+        }
 
-            if (mq.addEventListener) {
+        function applyTheme(mode) {
+            if (!scene || !ambientLight || !dirLight) return;
+            if (mode === "dark") {
+                scene.background.set(0x050816);
+                scene.fog.color.set(0x050816);
+                ambientLight.intensity = 0.45;
+                dirLight.intensity = 0.9;
+                dirLight.color.set(0xbfd7ff);
+                mazeFloorMats.forEach(m => { m.color.set(0x1e293b); m.roughness = 0.9; m.metalness = 0.0; });
+                mazeWallMats.forEach(m => { m.color.set(0x020617); m.roughness = 0.9; m.metalness = 0.0; });
+                if (puzzleFloorMat) { puzzleFloorMat.color.set(0x1f2933); puzzleFloorMat.roughness = 0.85; puzzleFloorMat.metalness = 0.05; }
+            } else {
+                scene.background.set(0xcbe5ff);
+                scene.fog.color.set(0xcbe5ff);
+                ambientLight.intensity = 0.95;
+                dirLight.intensity = 0.85;
+                dirLight.color.set(0xfff2cf);
+                mazeFloorMats.forEach(m => { m.color.set(0xe2e8f0); m.roughness = 0.6; m.metalness = 0.1; });
+                mazeWallMats.forEach(m => { m.color.set(0xf8fafc); m.roughness = 0.7; m.metalness = 0.0; });
+                if (puzzleFloorMat) { puzzleFloorMat.color.set(0xfacc6b); puzzleFloorMat.roughness = 0.7; puzzleFloorMat.metalness = 0.1; }
+            }
+            renderer.setClearColor(scene.background);
+        }
+
+        function recomputeTheme() {
+            const effective = themeMode === "light" || themeMode === "dark" ? themeMode : (systemPrefersDark ? "dark" : "light");
+            applyTheme(effective);
+        }
+
+        function setupThemeFromSystem() {
+            if (window.matchMedia) {
+                const mq = window.matchMedia("(prefers-color-scheme: dark)");
+                systemPrefersDark = mq.matches;
+                recomputeTheme();
                 mq.addEventListener("change", (e) => {
                     systemPrefersDark = e.matches;
-                    if (themeMode === "system") {
-                        recomputeTheme();
-                    }
+                    if (themeMode === "system") recomputeTheme();
                 });
-            } else if (mq.addListener) {
-                mq.addListener((e) => {
-                    systemPrefersDark = e.matches;
-                    if (themeMode === "system") {
-                        recomputeTheme();
-                    }
-                });
-            }
-        } else {
-            systemPrefersDark = false;
-            recomputeTheme();
-        }
-    }
-
-    function updateThemeButtons() {
-        const themeUI = document.getElementById('theme-ui');
-        const buttons = themeUI.querySelectorAll('button[data-theme]');
-        buttons.forEach(btn => {
-            if (btn.dataset.theme === themeMode) {
-                btn.classList.add('active');
             } else {
-                btn.classList.remove('active');
+                systemPrefersDark = false;
+                recomputeTheme();
             }
-        });
-    }
-
-    // --- Save system helpers ---
-    function buildSaveData() {
-        return {
-            version: 2,
-            currentMode,
-            currentRoomRow,
-            currentRoomCol,
-            returnRoomRow,
-            returnRoomCol,
-            hasKey,
-            inventory: Array.from(inventory),
-            ballRoomCoord,
-            plateRoomCoord,
-            portalRoomCoord,
-            themeMode
-        };
-    }
-
-    function saveGame(slot = AUTO_SLOT) {
-        try {
-            const key = SAVE_PREFIX + slot;
-            localStorage.setItem(key, JSON.stringify(buildSaveData()));
-        } catch (e) {
-            console.warn("Save failed:", e);
-        }
-    }
-
-    function loadGame(slot) {
-        try {
-            const key = SAVE_PREFIX + slot;
-            const raw = localStorage.getItem(key);
-            if (!raw) {
-                showStatus("No save in " + slot.toUpperCase(), 1500);
-                return;
-            }
-            const data = JSON.parse(raw);
-            applyLoadedData(data, false);
-            showStatus("Loaded " + slot.toUpperCase(), 1000);
-        } catch (e) {
-            console.warn("Load failed:", e);
-        }
-    }
-
-    function applyLoadedData(data, fromInit) {
-        if (!data || typeof data !== "object") return;
-        pendingLoadData = data;
-
-        currentMode = data.currentMode || "maze";
-        currentRoomRow = data.currentRoomRow ?? CENTER_ROW;
-        currentRoomCol = data.currentRoomCol ?? CENTER_COL;
-        returnRoomRow = data.returnRoomRow ?? CENTER_ROW;
-        returnRoomCol = data.returnRoomCol ?? CENTER_COL;
-        hasKey = !!data.hasKey;
-
-        inventory.clear();
-        if (Array.isArray(data.inventory)) {
-            data.inventory.forEach(id => inventory.add(id));
         }
 
-        ballRoomCoord = data.ballRoomCoord || ballRoomCoord;
-        plateRoomCoord = data.plateRoomCoord || plateRoomCoord;
-        portalRoomCoord = data.portalRoomCoord || portalRoomCoord;
-
-        if (data.themeMode) {
-            themeMode = data.themeMode;
-            updateThemeButtons();
+        function updateThemeButtons() {
+            const themeUI = document.getElementById('theme-ui');
+            const buttons = themeUI.querySelectorAll('button[data-theme]');
+            buttons.forEach(btn => {
+                if (btn.dataset.theme === themeMode) btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
         }
 
-        updateInventoryUI();
+        function buildSaveData() {
+            return {
+                version: 2, currentMode, currentRoomRow, currentRoomCol, returnRoomRow, returnRoomCol,
+                hasKey, inventory: Array.from(inventory), ballRoomCoord, plateRoomCoord, portalRoomCoord, themeMode
+            };
+        }
 
-        recomputeTheme();
+        function saveGame(slot = AUTO_SLOT) {
+            try { localStorage.setItem(SAVE_PREFIX + slot, JSON.stringify(buildSaveData())); } catch (e) { console.warn("Save failed:", e); }
+        }
 
-        if (currentMode === "maze") {
-            showMazeRoom(currentRoomRow, currentRoomCol, fromInit);
-        } else if (currentMode === "puzzle") {
-            loadPuzzleScene();
-        } else if (currentMode === "ending") {
-            loadEnding();
-        } else {
+        function loadGame(slot) {
+            try {
+                const key = SAVE_PREFIX + slot;
+                const raw = localStorage.getItem(key);
+                if (!raw) { showStatus("No save in " + slot.toUpperCase(), 1500); return; }
+                const data = JSON.parse(raw);
+                applyLoadedData(data, false);
+                showStatus("Loaded " + slot.toUpperCase(), 1000);
+            } catch (e) { console.warn("Load failed:", e); }
+        }
+
+        function applyLoadedData(data, fromInit) {
+            if (!data || typeof data !== "object") return;
+            pendingLoadData = data;
+            currentMode = data.currentMode || "maze";
+            currentRoomRow = data.currentRoomRow ?? CENTER_ROW;
+            currentRoomCol = data.currentRoomCol ?? CENTER_COL;
+            returnRoomRow = data.returnRoomRow ?? CENTER_ROW;
+            returnRoomCol = data.returnRoomCol ?? CENTER_COL;
+            hasKey = !!data.hasKey;
+            inventory.clear();
+            if (Array.isArray(data.inventory)) data.inventory.forEach(id => inventory.add(id));
+            ballRoomCoord = data.ballRoomCoord || ballRoomCoord;
+            plateRoomCoord = data.plateRoomCoord || plateRoomCoord;
+            portalRoomCoord = data.portalRoomCoord || portalRoomCoord;
+            if (data.themeMode) { themeMode = data.themeMode; updateThemeButtons(); }
+            updateInventoryUI();
+            recomputeTheme();
+            if (currentMode === "maze") showMazeRoom(currentRoomRow, currentRoomCol, fromInit);
+            else if (currentMode === "puzzle") loadPuzzleScene();
+            else if (currentMode === "ending") loadEnding();
+            else loadMenu();
+        }
+
+        function fullRestart() {
+            try { ["slot1", "slot2", "slot3", AUTO_SLOT].forEach(slot => localStorage.removeItem(SAVE_PREFIX + slot)); } catch (e) {}
+            currentMode = "menu"; currentRoomRow = CENTER_ROW; currentRoomCol = CENTER_COL; returnRoomRow = CENTER_ROW; returnRoomCol = CENTER_COL;
+            hasKey = false; inventory.clear(); pendingLoadData = null;
+            updateInventoryUI();
+            showStatus("Game fully restarted.", 1200);
             loadMenu();
         }
-    }
 
-    // --- Full game restart ---
-    function fullRestart() {
-        try {
-            ["slot1", "slot2", "slot3", AUTO_SLOT].forEach(slot => {
-                localStorage.removeItem(SAVE_PREFIX + slot);
-            });
-        } catch (e) {
-            console.warn("Failed to clear saves:", e);
-        }
-
-        // Reset in-memory state
-        currentMode = "menu";
-        currentRoomRow = CENTER_ROW;
-        currentRoomCol = CENTER_COL;
-        returnRoomRow = CENTER_ROW;
-        returnRoomCol = CENTER_COL;
-        hasKey = false;
-        inventory.clear();
-        pendingLoadData = null;
-
-        updateInventoryUI();
-        showStatus("Game fully restarted.", 1200);
-
-        // Go back to main menu and create a fresh autosave
-        loadMenu();
-    }
-
-    // --- Scene helpers ---
-    function refreshItemVisibility() {
-        for (let r = 0; r < NUM_ROWS; r++) {
-            for (let c = 0; c < NUM_COLS; c++) {
-                const g = mazeRooms[r][c];
-                g.children.forEach(obj => {
-                    if (obj.userData && obj.userData.type === "item") {
-                        const id = obj.userData.itemId;
-                        obj.visible = !inventory.has(id);
-                    }
-                });
+        function refreshItemVisibility() {
+            for (let r = 0; r < NUM_ROWS; r++) {
+                for (let c = 0; c < NUM_COLS; c++) {
+                    const g = mazeRooms[r][c];
+                    g.children.forEach(obj => {
+                        if (obj.userData && obj.userData.type === "item") obj.visible = !inventory.has(obj.userData.itemId);
+                    });
+                }
             }
         }
-    }
 
-    function hideAllRooms() {
-        for (let r = 0; r < NUM_ROWS; r++) {
-            for (let c = 0; c < NUM_COLS; c++) {
-                mazeRooms[r][c].visible = false;
-            }
-        }
-        menuGroup.visible = false;
-        puzzleGroup.visible = false;
-    }
-
-    function loadMenu() {
-        currentMode = "menu";
-        hideAllRooms();
-        menuGroup.visible = true;
-
-        const instr = document.getElementById('instructions');
-        const startText = document.getElementById('start-text');
-        const statusEl = document.getElementById('status-msg');
-
-        statusEl.style.display = 'none';
-        statusEl.className = '';
-
-        camera = perspCamera;
-        camera.position.set(0, 12, 15);
-        camera.lookAt(0, 10, 0);
-        cameraBasePosition.copy(camera.position);
-
-        instr.style.display = 'none';
-        startText.style.display = 'block';
-
-        saveGame(AUTO_SLOT);
-    }
-
-    function showMazeRoom(row, col, skipSave = false) {
-        currentMode = "maze";
-        currentRoomRow = row;
-        currentRoomCol = col;
-
-        hideAllRooms();
-        mazeRooms[row][col].visible = true;
-
-        const instr = document.getElementById('instructions');
-        const startText = document.getElementById('start-text');
-        const statusEl = document.getElementById('status-msg');
-
-        startText.style.display = 'none';
-        statusEl.style.display = 'none';
-        statusEl.className = '';
-
-        camera = orthoCamera;
-        camera.position.set(0, 25, 0);
-        camera.lookAt(0, 0, 0);
-        camera.up.set(0, 0, -1);
-        cameraBasePosition.copy(camera.position);
-
-        instr.style.display = 'block';
-
-        const isCenter = (row === CENTER_ROW && col === CENTER_COL);
-
-        if (isCenter) {
-            instr.innerHTML = `
-                <h2>Central Room</h2>
-                <p>You are in the <b>center</b> of a 3×3 maze.</p>
-                <p>Find a <b>ball</b>, a <b>plate</b>, and a <b>locked portal</b>.</p>
-                <p>Collect both items to be dragged into a gravity puzzle.</p>
-                <p>Beat the puzzle to earn a <b>key</b>, then find the portal room and escape.</p>
-            `;
-        } else {
-            instr.innerHTML = `
-                <h2>Maze Room</h2>
-                <p>This is one of the nine rooms in the maze.</p>
-                <p>Click objects to interact, and doors to move to adjacent rooms.</p>
-                <p>You need a <b>ball</b>, a <b>plate</b>, then the puzzle key to open the portal.</p>
-            `;
+        function hideAllRooms() {
+            for (let r = 0; r < NUM_ROWS; r++) { for (let c = 0; c < NUM_COLS; c++) mazeRooms[r][c].visible = false; }
+            menuGroup.visible = false;
+            puzzleGroup.visible = false;
+            // Hide touch controls by default
+            document.getElementById('touch-controls').style.display = 'none';
+            document.getElementById('puzzle-restart-btn').style.display = 'none';
         }
 
-        if (!skipSave) {
+        function loadMenu() {
+            currentMode = "menu";
+            hideAllRooms();
+            menuGroup.visible = true;
+            document.getElementById('instructions').style.display = 'none';
+            document.getElementById('start-text').style.display = 'block';
+            document.getElementById('status-msg').style.display = 'none';
+            camera = perspCamera;
+            camera.position.set(0, 12, 15);
+            camera.lookAt(0, 10, 0);
+            cameraBasePosition.copy(camera.position);
             saveGame(AUTO_SLOT);
         }
-    }
 
-    function loadPuzzleScene() {
-        currentMode = "puzzle";
-        hideAllRooms();
-        puzzleGroup.visible = true;
+        function showMazeRoom(row, col, skipSave = false) {
+            currentMode = "maze";
+            currentRoomRow = row;
+            currentRoomCol = col;
+            hideAllRooms();
+            mazeRooms[row][col].visible = true;
 
-        const instr = document.getElementById('instructions');
-        const startText = document.getElementById('start-text');
-        const statusEl = document.getElementById('status-msg');
+            const instr = document.getElementById('instructions');
+            document.getElementById('start-text').style.display = 'none';
+            document.getElementById('status-msg').style.display = 'none';
 
-        startText.style.display = 'none';
-        statusEl.style.display = 'none';
-        statusEl.className = '';
+            camera = orthoCamera;
+            camera.position.set(0, 25, 0);
+            camera.lookAt(0, 0, 0);
+            camera.up.set(0, 0, -1);
+            cameraBasePosition.copy(camera.position);
 
-        camera = perspCamera;
-        camera.position.set(0, 20, 25);
-        camera.lookAt(0, 0, 0);
-        cameraBasePosition.copy(camera.position);
-
-        instr.style.display = 'block';
-        instr.innerHTML = `
-            <h2>Gravity Puzzle Room</h2>
-            <p>Use <b>Arrow Keys</b> to tilt the floor and roll the ball into the <b>green zone</b>.</p>
-            <p>Don't fall off! Press <b>R</b> to restart the puzzle.</p>
-            <p>Win to receive a <b>key</b> and return to the maze.</p>
-        `;
-        restartGame();
-        saveGame(AUTO_SLOT);
-    }
-
-    function loadEnding() {
-        currentMode = "ending";
-        hideAllRooms();
-        const instr = document.getElementById('instructions');
-        const statusEl = document.getElementById('status-msg');
-        const startText = document.getElementById('start-text');
-
-        instr.style.display = 'none';
-        startText.style.display = 'none';
-
-        camera = perspCamera;
-        camera.position.set(0, 12, 15);
-        camera.lookAt(0, 0, 0);
-        cameraBasePosition.copy(camera.position);
-
-        statusEl.style.display = 'block';
-        statusEl.className = 'win';
-        statusEl.textContent = "You step through the portal and escape the maze!\nThanks for playing.";
-        showStatus("The labyrinth dissolves behind you...", 3000);
-
-        saveGame(AUTO_SLOT);
-    }
-
-    function updateInventoryUI() {
-        const invEl = document.getElementById('inventory-ui');
-        if (!invEl) return;
-        if (inventory.size === 0) {
-            invEl.textContent = 'Inventory: (empty)';
-        } else {
-            invEl.textContent = 'Inventory: ' + Array.from(inventory).join(', ');
-        }
-        refreshItemVisibility();
-    }
-
-    function showStatus(text, timeout = 2000) {
-        const msgEl = document.getElementById('message');
-        if (!msgEl) return;
-        msgEl.textContent = text;
-        msgEl.style.display = 'block';
-        if (timeout > 0) {
-            clearTimeout(showStatus._timeoutId);
-            showStatus._timeoutId = setTimeout(() => {
-                msgEl.style.display = 'none';
-            }, timeout);
-        }
-    }
-
-    // --- Input / interaction ---
-    function onPointerDown(event) {
-        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-        raycaster.setFromCamera(mouse, camera);
-
-        let clickable = [];
-        if (currentMode === "menu") {
-            clickable = menuGroup.children;
-        } else if (currentMode === "maze") {
-            clickable = mazeRooms[currentRoomRow][currentRoomCol].children;
-        } else if (currentMode === "puzzle") {
-            clickable = puzzleGroup.children;
-        } else {
-            return;
+            instr.style.display = 'block';
+            const isCenter = (row === CENTER_ROW && col === CENTER_COL);
+            if (isCenter) {
+                instr.innerHTML = `<h2>Central Room</h2><p>Find a <b>ball</b>, a <b>plate</b>, and a <b>locked portal</b>.</p>`;
+            } else {
+                instr.innerHTML = `<h2>Maze Room</h2><p>Tap objects to interact.</p>`;
+            }
+            if (!skipSave) saveGame(AUTO_SLOT);
         }
 
-        const hits = raycaster.intersectObjects(clickable, true);
-        if (hits.length === 0) return;
+        function loadPuzzleScene() {
+            currentMode = "puzzle";
+            hideAllRooms();
+            puzzleGroup.visible = true;
+            
+            // Show Touch Controls
+            document.getElementById('touch-controls').style.display = 'flex';
+            document.getElementById('puzzle-restart-btn').style.display = 'flex';
 
-        const obj = hits[0].object;
+            const instr = document.getElementById('instructions');
+            document.getElementById('start-text').style.display = 'none';
+            document.getElementById('status-msg').style.display = 'none';
 
-        // MENU
-        if (currentMode === "menu" && obj.userData.type === "startGame") {
-            showMazeRoom(CENTER_ROW, CENTER_COL);
-            return;
+            camera = perspCamera;
+            camera.position.set(0, 20, 25);
+            camera.lookAt(0, 0, 0);
+            cameraBasePosition.copy(camera.position);
+
+            instr.style.display = 'block';
+            instr.innerHTML = `<h2>Puzzle</h2><p>Tilt floor with D-Pad.</p>`;
+            restartGame();
+            saveGame(AUTO_SLOT);
         }
 
-        // MAZE
-        if (currentMode === "maze") {
-            if (obj.userData.type === "item") {
-                const id = obj.userData.itemId;
-                if (!inventory.has(id)) {
-                    inventory.add(id);
-                    updateInventoryUI();
-                    showStatus("Picked up " + id + "!");
-                }
+        function loadEnding() {
+            currentMode = "ending";
+            hideAllRooms();
+            document.getElementById('instructions').style.display = 'none';
+            document.getElementById('start-text').style.display = 'none';
+            camera = perspCamera;
+            camera.position.set(0, 12, 15);
+            camera.lookAt(0, 0, 0);
+            cameraBasePosition.copy(camera.position);
+            const statusEl = document.getElementById('status-msg');
+            statusEl.style.display = 'block';
+            statusEl.className = 'win';
+            statusEl.textContent = "ESCAPED!";
+            showStatus("The labyrinth dissolves behind you...", 3000);
+            saveGame(AUTO_SLOT);
+        }
 
-                // If ball + plate collected and no key yet -> auto enter puzzle
-                if (inventory.has("ball") && inventory.has("plate") && !hasKey) {
-                    returnRoomRow = currentRoomRow;
-                    returnRoomCol = currentRoomCol;
+        function updateInventoryUI() {
+            const invEl = document.getElementById('inventory-ui');
+            if (invEl) invEl.textContent = inventory.size === 0 ? 'Inventory: (empty)' : 'Inventory: ' + Array.from(inventory).join(', ');
+            refreshItemVisibility();
+        }
 
-                    startScreenShake(0.45, 0.8);
-                    showStatus("The floor trembles... you are dragged elsewhere!", 2000);
-                    saveGame(AUTO_SLOT);
-                    setTimeout(() => {
-                        loadPuzzleScene();
-                    }, 800);
-                } else {
-                    saveGame(AUTO_SLOT);
-                }
+        function showStatus(text, timeout = 2000) {
+            const msgEl = document.getElementById('message');
+            msgEl.textContent = text;
+            msgEl.style.display = 'block';
+            if (timeout > 0) {
+                clearTimeout(showStatus._timeoutId);
+                showStatus._timeoutId = setTimeout(() => { msgEl.style.display = 'none'; }, timeout);
+            }
+        }
+
+        function onPointerDown(event) {
+            // If we are clicking on UI, ignore 3D interaction logic
+            if(event.target.closest('button') || event.target.closest('.dpad-btn') || event.target.id === 'puzzle-restart-btn') return;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            let clickable = [];
+            if (currentMode === "menu") clickable = menuGroup.children;
+            else if (currentMode === "maze") clickable = mazeRooms[currentRoomRow][currentRoomCol].children;
+            else if (currentMode === "puzzle") clickable = puzzleGroup.children;
+            else return;
+
+            const hits = raycaster.intersectObjects(clickable, true);
+            if (hits.length === 0) return;
+
+            const obj = hits[0].object;
+
+            if (currentMode === "menu" && obj.userData.type === "startGame") {
+                showMazeRoom(CENTER_ROW, CENTER_COL);
                 return;
             }
 
-            if (obj.userData.type === "door") {
-                const kind = obj.userData.kind || "mazeDoor";
-
-                if (kind === "mazeDoor") {
-                    const nr = obj.userData.row;
-                    const nc = obj.userData.col;
-                    showMazeRoom(nr, nc);
-                    return;
-                }
-
-                if (kind === "finalExit") {
-                    if (!hasKey) {
-                        showStatus("The portal is sealed. A key-shaped slot glows faintly.");
+            if (currentMode === "maze") {
+                if (obj.userData.type === "item") {
+                    const id = obj.userData.itemId;
+                    if (!inventory.has(id)) {
+                        inventory.add(id);
+                        updateInventoryUI();
+                        showStatus("Picked up " + id + "!");
+                    }
+                    if (inventory.has("ball") && inventory.has("plate") && !hasKey) {
+                        returnRoomRow = currentRoomRow;
+                        returnRoomCol = currentRoomCol;
+                        startScreenShake(0.45, 0.8);
+                        showStatus("The floor trembles...", 2000);
+                        saveGame(AUTO_SLOT);
+                        setTimeout(() => { loadPuzzleScene(); }, 800);
                     } else {
-                        showStatus("You raise the key. The portal roars to life...");
-                        loadEnding();
+                        saveGame(AUTO_SLOT);
                     }
                     return;
                 }
+                if (obj.userData.type === "door") {
+                    const kind = obj.userData.kind || "mazeDoor";
+                    if (kind === "mazeDoor") {
+                        showMazeRoom(obj.userData.row, obj.userData.col);
+                        return;
+                    }
+                    if (kind === "finalExit") {
+                        if (!hasKey) showStatus("Sealed. Needs key.");
+                        else { showStatus("Portal Opening..."); loadEnding(); }
+                        return;
+                    }
+                }
             }
         }
-    }
 
-    // --- Puzzle control & physics ---
-    function restartGame() {
-        if (!ballBody || !floorBody) return;
-        gameActive = true;
-
-        ballBody.position.set(-5, 5, -5);
-        ballBody.velocity.set(0, 0, 0);
-        ballBody.angularVelocity.set(0, 0, 0);
-
-        floorBody.quaternion.setFromEuler(0, 0, 0);
-
-        const statusEl = document.getElementById('status-msg');
-        statusEl.style.display = 'none';
-        statusEl.className = '';
-    }
-
-    function updatePhysics() {
-        if (currentMode !== "puzzle") return;
-        if (!ballBody || !floorBody) return;
-
-        if (gameActive) {
-            const maxTilt = 0.3;
-
-            const currentEuler = new CANNON.Vec3();
-            floorBody.quaternion.toEuler(currentEuler);
-
-            let targetX = 0;
-            let targetZ = 0;
-
-            if (keys.ArrowUp) targetX = -maxTilt;
-            if (keys.ArrowDown) targetX = maxTilt;
-            if (keys.ArrowLeft) targetZ = maxTilt;
-            if (keys.ArrowRight) targetZ = -maxTilt;
-
-            currentEuler.x += (targetX - currentEuler.x) * 0.05;
-            currentEuler.z += (targetZ - currentEuler.z) * 0.05;
-
-            floorBody.quaternion.setFromEuler(currentEuler.x, 0, currentEuler.z);
+        function restartGame() {
+            if (!ballBody || !floorBody) return;
+            gameActive = true;
+            ballBody.position.set(-5, 5, -5);
+            ballBody.velocity.set(0, 0, 0);
+            ballBody.angularVelocity.set(0, 0, 0);
+            floorBody.quaternion.setFromEuler(0, 0, 0);
+            document.getElementById('status-msg').style.display = 'none';
         }
 
-        world.step(timeStep);
+        function updatePhysics() {
+            if (currentMode !== "puzzle") return;
+            if (!ballBody || !floorBody) return;
 
-        ballMesh.position.copy(ballBody.position);
-        ballMesh.quaternion.copy(ballBody.quaternion);
-
-        floorMesh.position.copy(floorBody.position);
-        floorMesh.quaternion.copy(floorBody.quaternion);
-
-        if (gameActive) {
-            checkWinCondition();
-        }
-    }
-
-    function checkWinCondition() {
-        if (ballBody.position.y < -10) {
-            endGame(false);
-        }
-
-        const dx = ballBody.position.x - TARGET_POS.x;
-        const dz = ballBody.position.z - TARGET_POS.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-
-        if (dist < TARGET_RADIUS && ballBody.position.y > -1) {
-            endGame(true);
-        }
-    }
-
-    function endGame(isWin) {
-        gameActive = false;
-        const statusEl = document.getElementById('status-msg');
-        statusEl.style.display = 'block';
-
-        if (isWin) {
-            statusEl.textContent = "SUCCESS!\nYou obtained a key.";
-            statusEl.className = 'win';
-
-            if (!hasKey) {
-                hasKey = true;
-                inventory.add("key");
-                updateInventoryUI();
-                showStatus("A strange key appears in your hand.\nYou are pulled back into the maze.", 2500);
+            if (gameActive) {
+                const maxTilt = 0.3;
+                const currentEuler = new CANNON.Vec3();
+                floorBody.quaternion.toEuler(currentEuler);
+                let targetX = 0;
+                let targetZ = 0;
+                if (keys.ArrowUp) targetX = -maxTilt;
+                if (keys.ArrowDown) targetX = maxTilt;
+                if (keys.ArrowLeft) targetZ = maxTilt;
+                if (keys.ArrowRight) targetZ = -maxTilt;
+                currentEuler.x += (targetX - currentEuler.x) * 0.05;
+                currentEuler.z += (targetZ - currentEuler.z) * 0.05;
+                floorBody.quaternion.setFromEuler(currentEuler.x, 0, currentEuler.z);
             }
 
-            setTimeout(() => {
-                showMazeRoom(returnRoomRow, returnRoomCol);
-            }, 1500);
-        } else {
-            statusEl.textContent = "FAILURE";
-            statusEl.className = 'lose';
-            showStatus("You can press R to retry the puzzle.");
+            world.step(timeStep);
+            ballMesh.position.copy(ballBody.position);
+            ballMesh.quaternion.copy(ballBody.quaternion);
+            floorMesh.position.copy(floorBody.position);
+            floorMesh.quaternion.copy(floorBody.quaternion);
+
+            if (gameActive) checkWinCondition();
         }
-        saveGame(AUTO_SLOT);
-    }
 
-    // --- Misc ---
-    function onWindowResize() {
-        const aspect = window.innerWidth / window.innerHeight;
+        function checkWinCondition() {
+            if (ballBody.position.y < -10) endGame(false);
+            const dx = ballBody.position.x - TARGET_POS.x;
+            const dz = ballBody.position.z - TARGET_POS.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            if (dist < TARGET_RADIUS && ballBody.position.y > -1) endGame(true);
+        }
 
-        orthoCamera.left   = -viewSize * aspect;
-        orthoCamera.right  =  viewSize * aspect;
-        orthoCamera.top    =  viewSize;
-        orthoCamera.bottom = -viewSize;
-        orthoCamera.updateProjectionMatrix();
+        function endGame(isWin) {
+            gameActive = false;
+            const statusEl = document.getElementById('status-msg');
+            statusEl.style.display = 'block';
+            if (isWin) {
+                statusEl.textContent = "SUCCESS!";
+                statusEl.className = 'win';
+                if (!hasKey) {
+                    hasKey = true;
+                    inventory.add("key");
+                    updateInventoryUI();
+                    showStatus("Key Obtained!", 2500);
+                }
+                setTimeout(() => { showMazeRoom(returnRoomRow, returnRoomCol); }, 1500);
+            } else {
+                statusEl.textContent = "FAILURE";
+                statusEl.className = 'lose';
+                showStatus("Press Restart Button to retry.");
+            }
+            saveGame(AUTO_SLOT);
+        }
 
-        perspCamera.aspect = aspect;
-        perspCamera.updateProjectionMatrix();
+        function onWindowResize() {
+            const aspect = window.innerWidth / window.innerHeight;
+            orthoCamera.left = -viewSize * aspect;
+            orthoCamera.right = viewSize * aspect;
+            orthoCamera.top = viewSize;
+            orthoCamera.bottom = -viewSize;
+            orthoCamera.updateProjectionMatrix();
+            perspCamera.aspect = aspect;
+            perspCamera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
 
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-
-    function animate() {
-        requestAnimationFrame(animate);
-        updatePhysics();
-        updateScreenShake();
-        renderer.render(scene, camera);
-    }
+        function animate() {
+            requestAnimationFrame(animate);
+            updatePhysics();
+            updateScreenShake();
+            renderer.render(scene, camera);
+        }
     </script>
 </body>
 </html>
