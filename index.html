@@ -391,6 +391,7 @@
         // Lighting and theme
         let ambientLight;
         let dirLight;
+        let hemiLight; // New Hemisphere Light
         let themeMode = "system"; // system | light | dark
         let systemPrefersDark = false;
 
@@ -464,7 +465,8 @@
             // THREE.js setup
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x202025);
-            scene.fog = new THREE.Fog(0x202025, 10, 60);
+            // FIXED FOG: Increased range to prevent floor disappearing on mobile
+            scene.fog = new THREE.Fog(0x202025, 30, 150); 
 
             const aspect = window.innerWidth / window.innerHeight;
             const isPortrait = aspect < 1.0;
@@ -510,11 +512,18 @@
             renderer.shadowMap.enabled = true;
             document.body.appendChild(renderer.domElement);
 
-            // Lighting - Increased Intensity for visibility on mobile
-            ambientLight = new THREE.AmbientLight(0xffffff, 0.7); // Increased Base Intensity
+            // --- Lighting Setup ---
+            
+            // Hemisphere Light (Sky/Ground) - Helps prevent pitch black shadows
+            hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+            scene.add(hemiLight);
+
+            // Ambient - Base brightness
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambientLight);
 
-            dirLight = new THREE.DirectionalLight(0xffffff, 1.2); // Increased Base Intensity
+            // Directional - Sun/Key light
+            dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
             dirLight.position.set(10, 20, 10);
             dirLight.castShadow = true;
             dirLight.shadow.camera.top = 20;
@@ -980,9 +989,9 @@
             scene.background.set(0x050816);
             scene.fog.color.set(0x050816);
             
-            // Increased Intensity for Mobile Visibility
-            ambientLight.intensity = 0.7; // Was 0.45
-            dirLight.intensity = 1.0;     // Was 0.9
+            // Further Increased Intensity for Mobile Visibility
+            ambientLight.intensity = 1.2; // Was 0.7
+            dirLight.intensity = 2.0;     // Was 1.0
             
             dirLight.color.set(0xbfd7ff);
 
@@ -997,17 +1006,18 @@
                 m.metalness = 0.0;
             });
             if (puzzleFloorMat) {
-                puzzleFloorMat.color.set(0x1f2933);
-                puzzleFloorMat.roughness = 0.85;
-                puzzleFloorMat.metalness = 0.05;
+                // Made lighter to reflect more light in dark mode
+                puzzleFloorMat.color.set(0x5c6b7f); // Was 0x1f2933
+                puzzleFloorMat.roughness = 0.7;
+                puzzleFloorMat.metalness = 0.1;
             }
         } else {
             scene.background.set(0xcbe5ff);
-            //scene.fog.color.set(0xcbe5ff);
+            scene.fog.color.set(0xcbe5ff);
             
             // Increased Intensity for Mobile Visibility
-            ambientLight.intensity = 1.0; // Was 0.95
-            dirLight.intensity = 1.0;     // Was 0.85
+            ambientLight.intensity = 1.0; 
+            dirLight.intensity = 1.2;     
             
             dirLight.color.set(0xfff2cf);
 
@@ -1236,7 +1246,7 @@
         // Reset Camera based on aspect ratio (fix for Start Screen zoom)
         const aspect = window.innerWidth / window.innerHeight;
         const isPortrait = aspect < 1.0;
-        const camDist = isPortrait ? 25 : 15; // Move back if portrait
+        const camDist = isPortrait ? 30 : 15; // Increased Portrait Zoom dist
 
         camera = perspCamera;
         camera.position.set(0, 12, camDist);
@@ -1592,7 +1602,7 @@
 
         // Dynamic Zoom Scaling for Perspective (Puzzle + Menu)
         // If portrait, zoom out (increase Z)
-        let perspDist = isPortrait ? 25 : 15;
+        let perspDist = isPortrait ? 30 : 15;
         let perspHeight = 12;
 
         // If in puzzle mode, use specific puzzle camera settings
