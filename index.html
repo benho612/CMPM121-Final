@@ -79,6 +79,27 @@
             display: none;
             z-index: 15;
         }
+
+        #save-ui {
+            position: absolute;
+            bottom: 10px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 6px 8px;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 11px;
+            z-index: 12;
+        }
+        #save-ui span {
+            font-weight: bold;
+            margin-right: 6px;
+        }
+        #save-ui button {
+            margin: 1px 2px;
+            font-size: 11px;
+            cursor: pointer;
+        }
     </style>
 
     <!-- Import Maps for Three.js and Cannon-es -->
@@ -102,6 +123,16 @@
     <div id="message"></div>
 
     <div id="start-text">START GAME ↓</div>
+
+    <div id="save-ui">
+        <span>Saves:</span>
+        <button data-slot="slot1" data-action="save">Save 1</button>
+        <button data-slot="slot1" data-action="load">Load 1</button>
+        <button data-slot="slot2" data-action="save">Save 2</button>
+        <button data-slot="slot2" data-action="load">Load 2</button>
+        <button data-slot="slot3" data-action="save">Save 3</button>
+        <button data-slot="slot3" data-action="load">Load 3</button>
+    </div>
 
     <script type="module">
         import * as THREE from 'three';
@@ -163,6 +194,38 @@
         let ballRoomCoord = null;
         let plateRoomCoord = null;
         let portalRoomCoord = null;
+
+        // --- Save system globals ---
+        const SAVE_PREFIX = "gravityEscape_";
+        const AUTO_SLOT = "autosave";
+        let pendingLoadData = null;
+
+        try {
+            const raw = localStorage.getItem(SAVE_PREFIX + AUTO_SLOT);
+            if (raw) {
+                pendingLoadData = JSON.parse(raw);
+                if (pendingLoadData && typeof pendingLoadData === "object") {
+                    // Apply basic state early (full scene wiring happens in init/applyLoadedData)
+                    currentMode = pendingLoadData.currentMode || "maze";
+                    currentRoomRow = pendingLoadData.currentRoomRow ?? CENTER_ROW;
+                    currentRoomCol = pendingLoadData.currentRoomCol ?? CENTER_COL;
+                    returnRoomRow = pendingLoadData.returnRoomRow ?? CENTER_ROW;
+                    returnRoomCol = pendingLoadData.returnRoomCol ?? CENTER_COL;
+                    hasKey = !!pendingLoadData.hasKey;
+
+                    if (Array.isArray(pendingLoadData.inventory)) {
+                        pendingLoadData.inventory.forEach(id => inventory.add(id));
+                    }
+
+                    ballRoomCoord = pendingLoadData.ballRoomCoord || null;
+                    plateRoomCoord = pendingLoadData.plateRoomCoord || null;
+                    portalRoomCoord = pendingLoadData.portalRoomCoord || null;
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to parse autosave:", e);
+            pendingLoadData = null;
+        }
 
         init();
         animate();
@@ -336,17 +399,19 @@
             }
 
             // --- Random placement of ball / plate / portal ---
-            const coords = [];
-            for (let r = 0; r < NUM_ROWS; r++) {
-                for (let c = 0; c < NUM_COLS; c++) {
-                    if (r === CENTER_ROW && c === CENTER_COL) continue;
-                    coords.push({ r, c });
+            if (!ballRoomCoord || !plateRoomCoord || !portalRoomCoord) {
+                const coords = [];
+                for (let r = 0; r < NUM_ROWS; r++) {
+                    for (let c = 0; c < NUM_COLS; c++) {
+                        if (r === CENTER_ROW && c === CENTER_COL) continue;
+                        coords.push({ r, c });
+                    }
                 }
+                shuffleArray(coords);
+                if (!ballRoomCoord) ballRoomCoord = coords[0];
+                if (!plateRoomCoord) plateRoomCoord = coords[1];
+                if (!portalRoomCoord) portalRoomCoord = coords[2];
             }
-            shuffleArray(coords);
-            ballRoomCoord = coords[0];
-            plateRoomCoord = coords[1];
-            portalRoomCoord = coords[2];
 
             // Place ball
             {
@@ -388,7 +453,6 @@
                 portalDoor.userData.kind = "finalExit";
                 portalDoor.userData.target = "ending";
 
-                // choose an outer wall with no neighbour
                 if (r === 0) {
                     portalDoor.position.set(0, 1.5, -5.75);
                 } else if (r === NUM_ROWS - 1) {
@@ -404,7 +468,7 @@
                 group.add(portalDoor);
             }
 
-            // --- PUZZLE ROOM (same physics puzzle) ---
+            // --- PUZZLE ROOM (physics puzzle) ---
             {
                 const floorGeoB = new THREE.BoxGeometry(20, 1, 20);
                 const floorMatB = new THREE.MeshStandardMaterial({ color: 0x666644 });
@@ -465,8 +529,36 @@
                 if (keys.hasOwnProperty(e.key)) keys[e.key] = false;
             });
 
+            // Save UI handlers
+            const saveUI = document.getElementById('save-ui');
+            saveUI.addEventListener('click', (e) => {
+                const btn = e.target;
+                if (!(btn instanceof HTMLButtonElement)) return;
+                const slot = btn.dataset.slot;
+                const action = btn.dataset.action;
+                if (!slot || !action) return;
+
+                if (action === 'save') {
+                    saveGame(slot);
+                    showStatus("Saved to " + slot.toUpperCase(), 1000);
+                } else if (action === 'load') {
+                    loadGame(slot);
+                }
+            });
+
+            // Auto-save on tab close
+            window.addEventListener('beforeunload', () => {
+                saveGame(AUTO_SLOT);
+            });
+
             updateInventoryUI();
-            loadMenu();
+
+            // Apply autosave if present, otherwise start at menu
+            if (pendingLoadData) {
+                applyLoadedData(pendingLoadData, true);
+            } else {
+                loadMenu();
+            }
         }
 
         // --- Utility: shuffle array ---
@@ -506,7 +598,96 @@
             }
         }
 
+        // --- Save system helpers ---
+        function buildSaveData() {
+            return {
+                version: 1,
+                currentMode,
+                currentRoomRow,
+                currentRoomCol,
+                returnRoomRow,
+                returnRoomCol,
+                hasKey,
+                inventory: Array.from(inventory),
+                ballRoomCoord,
+                plateRoomCoord,
+                portalRoomCoord
+            };
+        }
+
+        function saveGame(slot = AUTO_SLOT) {
+            try {
+                const key = SAVE_PREFIX + slot;
+                localStorage.setItem(key, JSON.stringify(buildSaveData()));
+            } catch (e) {
+                console.warn("Save failed:", e);
+            }
+        }
+
+        function loadGame(slot) {
+            try {
+                const key = SAVE_PREFIX + slot;
+                const raw = localStorage.getItem(key);
+                if (!raw) {
+                    showStatus("No save in " + slot.toUpperCase(), 1500);
+                    return;
+                }
+                const data = JSON.parse(raw);
+                applyLoadedData(data, false);
+                showStatus("Loaded " + slot.toUpperCase(), 1000);
+            } catch (e) {
+                console.warn("Load failed:", e);
+            }
+        }
+
+        function applyLoadedData(data, fromInit) {
+            if (!data || typeof data !== "object") return;
+            pendingLoadData = data;
+
+            currentMode = data.currentMode || "maze";
+            currentRoomRow = data.currentRoomRow ?? CENTER_ROW;
+            currentRoomCol = data.currentRoomCol ?? CENTER_COL;
+            returnRoomRow = data.returnRoomRow ?? CENTER_ROW;
+            returnRoomCol = data.returnRoomCol ?? CENTER_COL;
+            hasKey = !!data.hasKey;
+
+            inventory.clear();
+            if (Array.isArray(data.inventory)) {
+                data.inventory.forEach(id => inventory.add(id));
+            }
+
+            ballRoomCoord = data.ballRoomCoord || ballRoomCoord;
+            plateRoomCoord = data.plateRoomCoord || plateRoomCoord;
+            portalRoomCoord = data.portalRoomCoord || portalRoomCoord;
+
+            updateInventoryUI(); // also refreshes item visibility
+
+            if (currentMode === "maze") {
+                showMazeRoom(currentRoomRow, currentRoomCol, fromInit);
+            } else if (currentMode === "puzzle") {
+                loadPuzzleScene();
+            } else if (currentMode === "ending") {
+                loadEnding();
+            } else {
+                loadMenu();
+            }
+        }
+
         // --- Scene helpers ---
+        function refreshItemVisibility() {
+            for (let r = 0; r < NUM_ROWS; r++) {
+                for (let c = 0; c < NUM_COLS; c++) {
+                    const g = mazeRooms[r][c];
+                    g.children.forEach(obj => {
+                        if (obj.userData && obj.userData.type === "item") {
+                            const id = obj.userData.itemId;
+                            obj.visible = !inventory.has(id);
+                        }
+                    });
+                }
+            }
+        }
+
         function hideAllRooms() {
             for (let r = 0; r < NUM_ROWS; r++) {
                 for (let c = 0; c < NUM_COLS; c++) {
@@ -536,9 +717,11 @@
 
             instr.style.display = 'none';
             startText.style.display = 'block';
+
+            saveGame(AUTO_SLOT);
         }
 
-        function showMazeRoom(row, col) {
+        function showMazeRoom(row, col, skipSave = false) {
             currentMode = "maze";
             currentRoomRow = row;
             currentRoomCol = col;
@@ -568,17 +751,21 @@
                 instr.innerHTML = `
                     <h2>Central Room</h2>
                     <p>You are in the <b>center</b> of a 3×3 maze.</p>
-                    <p>Somewhere in the maze lie a <b>ball</b>, a <b>plate</b>, and a <b>locked portal</b>.</p>
-                    <p>Explore with doors. Once you collect both items, you'll be dragged into a gravity puzzle.</p>
-                    <p>Beat the puzzle to get a <b>key</b>, then find the portal room and escape.</p>
+                    <p>Find a <b>ball</b>, a <b>plate</b>, and a <b>locked portal</b>.</p>
+                    <p>Collect both items to be dragged into a gravity puzzle.</p>
+                    <p>Beat the puzzle to earn a <b>key</b>, then find the portal room and escape.</p>
                 `;
             } else {
                 instr.innerHTML = `
                     <h2>Maze Room</h2>
                     <p>This is one of the nine rooms in the maze.</p>
                     <p>Click objects to interact, and doors to move to adjacent rooms.</p>
-                    <p>Remember: you need a <b>ball</b>, a <b>plate</b>, then clear the puzzle to find the final portal.</p>
+                    <p>You need a <b>ball</b>, a <b>plate</b>, then the puzzle key to open the portal.</p>
                 `;
+            }
+
+            if (!skipSave) {
+                saveGame(AUTO_SLOT);
             }
         }
 
@@ -608,6 +795,7 @@
                 <p>Win to receive a <b>key</b> and return to the maze.</p>
             `;
             restartGame();
+            saveGame(AUTO_SLOT);
         }
 
         function loadEnding() {
@@ -629,6 +817,8 @@
             statusEl.className = 'win';
             statusEl.textContent = "You step through the portal and escape the maze!\nThanks for playing.";
             showStatus("The labyrinth dissolves behind you...", 3000);
+
+            saveGame(AUTO_SLOT);
         }
 
         function updateInventoryUI() {
@@ -639,6 +829,7 @@
             } else {
                 invEl.textContent = 'Inventory: ' + Array.from(inventory).join(', ');
             }
+            refreshItemVisibility();
         }
 
         function showStatus(text, timeout = 2000) {
@@ -690,23 +881,22 @@
                     if (!inventory.has(id)) {
                         inventory.add(id);
                         updateInventoryUI();
-                        obj.visible = false;
                         showStatus("Picked up " + id + "!");
                     }
 
                     // If ball + plate collected and no key yet -> auto enter puzzle
                     if (inventory.has("ball") && inventory.has("plate") && !hasKey) {
-                        // Remember current room to return here after puzzle
                         returnRoomRow = currentRoomRow;
                         returnRoomCol = currentRoomCol;
 
-                        // Trigger screen shake when the last item is collected
                         startScreenShake(0.45, 0.8);
-
                         showStatus("The floor trembles... you are dragged elsewhere!", 2000);
+                        saveGame(AUTO_SLOT);
                         setTimeout(() => {
                             loadPuzzleScene();
                         }, 800);
+                    } else {
+                        saveGame(AUTO_SLOT);
                     }
                     return;
                 }
@@ -818,7 +1008,6 @@
                 }
 
                 setTimeout(() => {
-                    // Return to the room where the player collected the second item
                     showMazeRoom(returnRoomRow, returnRoomCol);
                 }, 1500);
             } else {
@@ -826,6 +1015,7 @@
                 statusEl.className = 'lose';
                 showStatus("You can press R to retry the puzzle.");
             }
+            saveGame(AUTO_SLOT);
         }
 
         // --- Misc ---
