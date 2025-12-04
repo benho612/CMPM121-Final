@@ -18,11 +18,10 @@
             touch-action: none; /* Prevent scroll on mobile */
         }
 
-        /* --- UI Overlay Wrapper --- */
-        #gear-btn {
+        /* --- Header Buttons --- */
+        .header-btn {
             position: absolute;
             top: 20px;
-            right: 20px;
             width: 40px;
             height: 40px;
             background: rgba(0, 0, 0, 0.6);
@@ -35,8 +34,19 @@
             cursor: pointer;
             font-size: 24px;
             user-select: none;
+            color: white;
         }
 
+        #gear-btn {
+            right: 20px;
+        }
+
+        #puzzle-restart-btn {
+            right: 70px; /* To the left of the gear icon */
+            display: none; /* Hidden by default */
+        }
+
+        /* --- Expanded Menu --- */
         #expanded-menu {
             position: absolute;
             top: 0;
@@ -242,7 +252,7 @@
                 }
             }
 
-            #gear-btn {
+            .header-btn {
                 background: rgba(255, 255, 255, 0.8);
                 border-color: #111827;
                 color: #111827;
@@ -289,7 +299,8 @@
     </script>
 </head>
 <body>
-    <div id="gear-btn">⚙</div>
+    <div id="gear-btn" class="header-btn">⚙</div>
+    <div id="puzzle-restart-btn" class="header-btn">↻</div>
 
     <div id="expanded-menu">
         <h2>PAUSE / MENU</h2>
@@ -464,10 +475,10 @@
                 effectiveViewSize = viewSize * 1.5;
             }
 
-            // Perspective Camera (Puzzle): Adjusted for zoom scale
-            // If portrait (phone), move Z back significantly to avoid "zoomed in" feel
-            const puzzleCamDist = isPortrait ? 45 : 25;
-            const puzzleCamHeight = isPortrait ? 35 : 20;
+            // Perspective Camera (Puzzle/Menu): Adjusted for zoom scale
+            // If portrait (phone), move Z back significantly
+            const camDist = isPortrait ? 45 : 25;
+            const camHeight = isPortrait ? 35 : 20;
 
             perspCamera = new THREE.PerspectiveCamera(
                 45,
@@ -475,7 +486,7 @@
                 0.1,
                 200
             );
-            perspCamera.position.set(0, puzzleCamHeight, puzzleCamDist);
+            perspCamera.position.set(0, camHeight, camDist);
             perspCamera.lookAt(0, 0, 0);
 
             // Orthographic camera
@@ -499,10 +510,11 @@
             renderer.shadowMap.enabled = true;
             document.body.appendChild(renderer.domElement);
 
-            ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            // Lighting - Increased Intensity for visibility on mobile
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.7); // Increased Base Intensity
             scene.add(ambientLight);
 
-            dirLight = new THREE.DirectionalLight(0xffffff, 1);
+            dirLight = new THREE.DirectionalLight(0xffffff, 1.2); // Increased Base Intensity
             dirLight.position.set(10, 20, 10);
             dirLight.castShadow = true;
             dirLight.shadow.camera.top = 20;
@@ -788,6 +800,7 @@
 
     function setupUIInteractions() {
         const gearBtn = document.getElementById('gear-btn');
+        const restartBtn = document.getElementById('puzzle-restart-btn');
         const menu = document.getElementById('expanded-menu');
         const closeBtn = document.getElementById('close-menu-btn');
         const saveUI = document.getElementById('save-ui');
@@ -801,6 +814,14 @@
         gearBtn.addEventListener('click', (e) => {
             e.stopPropagation(); // prevent raycaster click
             toggleMenu();
+        });
+
+        // Restart Puzzle Button
+        restartBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if(currentMode === "puzzle") {
+                restartGame();
+            }
         });
 
         closeBtn.addEventListener('click', (e) => {
@@ -958,8 +979,11 @@
         if (mode === "dark") {
             scene.background.set(0x050816);
             scene.fog.color.set(0x050816);
-            ambientLight.intensity = 0.45;
-            dirLight.intensity = 0.9;
+            
+            // Increased Intensity for Mobile Visibility
+            ambientLight.intensity = 0.7; // Was 0.45
+            dirLight.intensity = 1.0;     // Was 0.9
+            
             dirLight.color.set(0xbfd7ff);
 
             mazeFloorMats.forEach(m => {
@@ -980,8 +1004,11 @@
         } else {
             scene.background.set(0xcbe5ff);
             scene.fog.color.set(0xcbe5ff);
-            ambientLight.intensity = 0.95;
-            dirLight.intensity = 0.85;
+            
+            // Increased Intensity for Mobile Visibility
+            ambientLight.intensity = 1.0; // Was 0.95
+            dirLight.intensity = 1.0;     // Was 0.85
+            
             dirLight.color.set(0xfff2cf);
 
             mazeFloorMats.forEach(m => {
@@ -1195,6 +1222,9 @@
         hideAllRooms();
         toggleJoystick(false);
         menuGroup.visible = true;
+        
+        // Hide restart button in menu
+        document.getElementById('puzzle-restart-btn').style.display = 'none';
 
         const instr = document.getElementById('instructions');
         const startText = document.getElementById('start-text');
@@ -1203,8 +1233,13 @@
         statusEl.style.display = 'none';
         statusEl.className = '';
 
+        // Reset Camera based on aspect ratio (fix for Start Screen zoom)
+        const aspect = window.innerWidth / window.innerHeight;
+        const isPortrait = aspect < 1.0;
+        const camDist = isPortrait ? 25 : 15; // Move back if portrait
+
         camera = perspCamera;
-        camera.position.set(0, 12, 15);
+        camera.position.set(0, 12, camDist);
         camera.lookAt(0, 10, 0);
         cameraBasePosition.copy(camera.position);
 
@@ -1222,6 +1257,9 @@
         hideAllRooms();
         toggleJoystick(false);
         mazeRooms[row][col].visible = true;
+        
+        // Hide restart button in maze
+        document.getElementById('puzzle-restart-btn').style.display = 'none';
 
         const instr = document.getElementById('instructions');
         const startText = document.getElementById('start-text');
@@ -1268,6 +1306,9 @@
         hideAllRooms();
         toggleJoystick(true); // Enable Joystick (will check mobile flag inside)
         puzzleGroup.visible = true;
+        
+        // Show restart button
+        document.getElementById('puzzle-restart-btn').style.display = 'flex';
 
         const instr = document.getElementById('instructions');
         const startText = document.getElementById('start-text');
@@ -1293,7 +1334,7 @@
             <h2>Gravity Puzzle Room</h2>
             <p>Use <b>Arrow Keys</b> or <b>Joystick</b> to tilt the floor.</p>
             <p>Roll the ball into the <b>green zone</b>.</p>
-            <p>Don't fall off! Press <b>R</b> to restart the puzzle.</p>
+            <p>Don't fall off!</p>
         `;
         restartGame();
         saveGame(AUTO_SLOT);
@@ -1303,6 +1344,10 @@
         currentMode = "ending";
         hideAllRooms();
         toggleJoystick(false);
+        
+        // Hide restart button
+        document.getElementById('puzzle-restart-btn').style.display = 'none';
+
         const instr = document.getElementById('instructions');
         const statusEl = document.getElementById('status-msg');
         const startText = document.getElementById('start-text');
@@ -1353,9 +1398,9 @@
         const menu = document.getElementById('expanded-menu');
         if (menu.classList.contains('open')) return;
         
-        // Prevent clicking through joystick
+        // Prevent clicking through joystick or header buttons
         if (event.target.closest('#joystick-zone')) return;
-        if (event.target.closest('#gear-btn')) return;
+        if (event.target.closest('.header-btn')) return;
 
         mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -1523,7 +1568,7 @@
         } else {
             statusEl.textContent = "FAILURE";
             statusEl.className = 'lose';
-            showStatus("You can press R to retry the puzzle.");
+            showStatus("You can press R or the Restart button to retry.");
         }
         saveGame(AUTO_SLOT);
     }
@@ -1545,17 +1590,23 @@
         orthoCamera.bottom = -effectiveViewSize;
         orthoCamera.updateProjectionMatrix();
 
-        // Dynamic Zoom Scaling for Perspective (Puzzle)
-        // If portrait, zoom out (increase Z) to see the board
-        const puzzleCamDist = isPortrait ? 45 : 25;
-        const puzzleCamHeight = isPortrait ? 35 : 20;
+        // Dynamic Zoom Scaling for Perspective (Puzzle + Menu)
+        // If portrait, zoom out (increase Z)
+        let perspDist = isPortrait ? 25 : 15;
+        let perspHeight = 12;
+
+        // If in puzzle mode, use specific puzzle camera settings
+        if (currentMode === 'puzzle') {
+            perspDist = isPortrait ? 45 : 25;
+            perspHeight = isPortrait ? 35 : 20;
+        }
 
         perspCamera.aspect = aspect;
-        // Only update position if we are currently in puzzle mode to avoid jumping
-        // or update it generally but rely on loadPuzzleScene to reset it correctly
-        if (currentMode === 'puzzle') {
-             perspCamera.position.set(0, puzzleCamHeight, puzzleCamDist);
-             perspCamera.lookAt(0,0,0);
+        
+        // Update position only to prevent jumpiness, mostly handled by state loaders
+        if (currentMode === 'puzzle' || currentMode === 'menu') {
+             perspCamera.position.set(0, perspHeight, perspDist);
+             perspCamera.lookAt(0, (currentMode === 'menu' ? 10 : 0), 0);
         }
         perspCamera.updateProjectionMatrix();
 
