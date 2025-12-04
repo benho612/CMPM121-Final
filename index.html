@@ -13,9 +13,10 @@
             margin: 0;
             overflow: hidden;
             font-family: 'Courier New', Courier, monospace;
-            background-color: #111;
-            color: #fff;
+            background-color: #111; /* Default Dark Background */
+            color: #fff;            /* Default Dark Text */
             touch-action: none; /* Prevent scroll on mobile */
+            transition: background-color 0.3s, color 0.3s; /* Smooth transition */
         }
 
         /* --- Header Buttons --- */
@@ -42,8 +43,8 @@
         }
 
         #puzzle-restart-btn {
-            right: 70px; /* To the left of the gear icon */
-            display: none; /* Hidden by default */
+            right: 70px; 
+            display: none;
         }
 
         /* --- Expanded Menu --- */
@@ -55,7 +56,7 @@
             height: 100%;
             background: rgba(0, 0, 0, 0.9);
             z-index: 90;
-            display: none; /* Hidden by default */
+            display: none;
             flex-direction: column;
             align-items: center;
             justify-content: center;
@@ -67,13 +68,9 @@
             display: flex;
         }
 
-        /* Repurposed existing IDs to fit in menu */
+        /* UI Containers */
         #inventory-ui, #save-ui, #theme-ui {
             position: relative;
-            top: auto;
-            left: auto;
-            right: auto;
-            bottom: auto;
             background: rgba(255, 255, 255, 0.1);
             padding: 15px;
             border-radius: 8px;
@@ -83,6 +80,7 @@
             display: flex;
             flex-direction: column;
             gap: 10px;
+            color: inherit;
         }
 
         #ui-layer {
@@ -100,6 +98,7 @@
             padding: 10px;
             border-radius: 4px;
             max-width: 340px;
+            color: inherit;
         }
         
         #status-msg {
@@ -136,7 +135,7 @@
 
         #message {
             position: absolute;
-            bottom: 160px; /* Moved up to clear joystick */
+            bottom: 160px;
             left: 50%;
             transform: translateX(-50%);
             color: inherit;
@@ -152,7 +151,7 @@
             text-align: center;
         }
 
-        /* UI Element Styling fixes for Menu Mode */
+        /* UI Element Styling */
         #save-ui span, #theme-ui span {
             display: block;
             margin-bottom: 5px;
@@ -172,7 +171,7 @@
             justify-content: center;
         }
 
-        /* --- Joystick Controls --- */
+        /* --- Joystick Controls (Default / Dark Mode) --- */
         #joystick-zone {
             position: absolute;
             bottom: 30px;
@@ -180,11 +179,12 @@
             transform: translateX(-50%);
             width: 140px;
             height: 140px;
+            /* Light rings for dark background */
             background: rgba(255, 255, 255, 0.1);
             border: 2px solid rgba(255, 255, 255, 0.3);
             border-radius: 50%;
             z-index: 50;
-            display: none; /* Shown only in puzzle + mobile */
+            display: none;
             touch-action: none;
         }
         
@@ -194,17 +194,17 @@
             left: 50%;
             width: 50px;
             height: 50px;
+            /* Light knob for dark background */
             background: rgba(255, 255, 255, 0.8);
             border-radius: 50%;
             transform: translate(-50%, -50%);
             pointer-events: none;
         }
 
-        /* --- Mobile / Phone Specific Styles --- */
+        /* --- Mobile Styles --- */
         @media (max-width: 768px) {
             #ui-layer {
-                /* Move UI from top-left to top-center and make smaller */
-                top: 70px; /* Below the gear icon */
+                top: 70px;
                 left: 50%;
                 transform: translateX(-50%);
                 width: 90%;
@@ -213,11 +213,11 @@
             }
 
             #instructions {
-                font-size: 12px; /* Smaller text */
+                font-size: 12px;
                 padding: 8px;
                 max-width: 100%;
                 text-align: center;
-                background: rgba(0, 0, 0, 0.4); /* Less obtrusive opacity */
+                background: rgba(0, 0, 0, 0.4);
             }
 
             #instructions h2 {
@@ -226,66 +226,70 @@
             }
             
             #message {
-                bottom: 180px; /* Ensure it clears joystick */
+                bottom: 180px;
                 font-size: 14px;
             }
             
             #status-msg {
-                font-size: 28px; /* Smaller win/lose text */
+                font-size: 28px;
             }
         }
 
-        @media (prefers-color-scheme: light) {
-            body {
-                background-color: #dbeafe;
-                color: #111827;
-            }
+        /* --- LIGHT MODE OVERRIDES (Applied via JS Class) --- */
+        body.light-mode {
+            background-color: #dbeafe;
+            color: #111827;
+        }
 
-            #instructions {
-                background: rgba(255, 255, 255, 0.9);
-                color: #111827;
-            }
-            
-            @media (max-width: 768px) {
-                #instructions {
-                    background: rgba(255, 255, 255, 0.7);
-                }
-            }
+        body.light-mode #instructions {
+            background: rgba(255, 255, 255, 0.9);
+            color: #111827;
+        }
 
-            .header-btn {
-                background: rgba(255, 255, 255, 0.8);
-                border-color: #111827;
-                color: #111827;
-            }
-            
-            #expanded-menu {
-                background: rgba(255, 255, 255, 0.95);
-                color: #111827;
-            }
-
-            #inventory-ui, #save-ui, #theme-ui {
-                background: rgba(0, 0, 0, 0.05);
-                color: #111827;
-            }
-
-            #message {
-                background: rgba(15, 23, 42, 0.9);
-                color: #e5e7eb;
-            }
-            
-            #joystick-zone {
-                border-color: rgba(0,0,0,0.3);
-                background: rgba(0,0,0,0.05);
-            }
-            #joystick-knob {
-                background: rgba(0,0,0,0.5);
-            }
-
-            #start-text {
-                color: #111827;
-                text-shadow: 2px 2px 4px #ffffff88;
+        /* Mobile instruction override for light mode */
+        @media (max-width: 768px) {
+            body.light-mode #instructions {
+                background: rgba(255, 255, 255, 0.7);
             }
         }
+
+        body.light-mode .header-btn {
+            background: rgba(255, 255, 255, 0.8);
+            border-color: #111827;
+            color: #111827;
+        }
+        
+        body.light-mode #expanded-menu {
+            background: rgba(255, 255, 255, 0.95);
+            color: #111827;
+        }
+
+        body.light-mode #inventory-ui, 
+        body.light-mode #save-ui, 
+        body.light-mode #theme-ui {
+            background: rgba(0, 0, 0, 0.05);
+            color: #111827;
+        }
+
+        body.light-mode #message {
+            background: rgba(15, 23, 42, 0.9);
+            color: #e5e7eb;
+        }
+        
+        /* Joystick Dark Colors for Light Background */
+        body.light-mode #joystick-zone {
+            border-color: rgba(0,0,0,0.3);
+            background: rgba(0,0,0,0.05);
+        }
+        body.light-mode #joystick-knob {
+            background: rgba(0,0,0,0.5);
+        }
+
+        body.light-mode #start-text {
+            color: #111827;
+            text-shadow: 2px 2px 4px #ffffff88;
+        }
+
     </style>
 
     <script type="importmap">
@@ -391,7 +395,7 @@
         // Lighting and theme
         let ambientLight;
         let dirLight;
-        let hemiLight; // New Hemisphere Light
+        let hemiLight;
         let themeMode = "system"; // system | light | dark
         let systemPrefersDark = false;
 
@@ -478,7 +482,6 @@
             }
 
             // Perspective Camera (Puzzle/Menu): Adjusted for zoom scale
-            // If portrait (phone), move Z back significantly
             const camDist = isPortrait ? 45 : 25;
             const camHeight = isPortrait ? 35 : 20;
 
@@ -514,15 +517,15 @@
 
             // --- Lighting Setup ---
             
-            // Hemisphere Light (Sky/Ground) - Helps prevent pitch black shadows
+            // Hemisphere Light
             hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
             scene.add(hemiLight);
 
-            // Ambient - Base brightness
+            // Ambient
             ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambientLight);
 
-            // Directional - Sun/Key light
+            // Directional
             dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
             dirLight.position.set(10, 20, 10);
             dirLight.castShadow = true;
@@ -983,6 +986,14 @@
 
     // --- Visual theme helpers (light/dark) ---
     function applyTheme(mode) {
+        // 1. Handle CSS Classes for UI (Joystick, etc.)
+        if (mode === 'light') {
+            document.body.classList.add('light-mode');
+        } else {
+            document.body.classList.remove('light-mode');
+        }
+
+        // 2. Handle 3D Scene Properties
         if (!scene || !ambientLight || !dirLight) return;
 
         if (mode === "dark") {
@@ -990,8 +1001,8 @@
             scene.fog.color.set(0x050816);
             
             // Further Increased Intensity for Mobile Visibility
-            ambientLight.intensity = 1.2; // Was 0.7
-            dirLight.intensity = 2.0;     // Was 1.0
+            ambientLight.intensity = 1.2; 
+            dirLight.intensity = 2.0;     
             
             dirLight.color.set(0xbfd7ff);
 
@@ -1007,7 +1018,7 @@
             });
             if (puzzleFloorMat) {
                 // Made lighter to reflect more light in dark mode
-                puzzleFloorMat.color.set(0x5c6b7f); // Was 0x1f2933
+                puzzleFloorMat.color.set(0x5c6b7f); 
                 puzzleFloorMat.roughness = 0.7;
                 puzzleFloorMat.metalness = 0.1;
             }
