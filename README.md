@@ -1,4 +1,12 @@
 # CMPM121-Final 
+# Devlog Entry - [12-4-2025]  
+## How we satisfied the software requirements  
+For the F3 requirements, we decided to satisfy numbers 3, 4, 5, and 6. For number 3, the reason we did this is that this fits our game the best, since there's nothing like water buckets, or anything like that would need to live that long. However, at the same time, we want to provide the chance for the player to resume their game if they decided to do something else in the meantime. The reason we picked 4 is that we also decided to pick number 5; we thought they would be a good combination since some people would keep their phone's default theme as dark. The reason we picked number 5 is that we want  people to try our game on the phone, will also be supportive of number 4. Lastly, we picked number 6 since we want more people to try our game. By providing a multi-language environment, this game shows diversity. 
+## How we satisfied the software requirements
+For each of your chosen F3 requirements, give a paragraph of explanation for how your project's implementation satisfies the requirements.
+## Reflection  
+The original gameplay got to stay; we mainly changed the feeling of the game. We added auto-saving, dark/bright/current system theme, touch screen availability, and two more languages of Chinese and Arabic. I'm glad that we don't have to do any more system changes; otherwise, it would be too much workload for all of us. However, through the system change in F1, we learn about this new game-dev system, the "new" physics engine, and how we can implement this game as a screen-touch game. 
+  
 # Devlog Entry - [12-1-2025]  
 ## How we satisfied the software requirements
 We kept the HTML5 + JavaScript with Cannon-es format that satisfies the F1 requirements. This is working great, so we don't want to change this. In this stage of development, we designed several rooms with different objects that the player can obtain. By going through different rooms, the player needs to collect all the items and get the key to escape. Normally, the player can click on the item to collect it, but the key needs to be collected through a quick physics puzzle. After collecting the key, the player will need to find the correct door to escape. There's an inventory box on the top right, so the player can keep track of what items they have collected. In the physical puzzle, the player will fail the obtain the key if they drop the ball outside the platform. Currently, there's one conclusive ending of the player has solved the puzzle. 
