@@ -82,6 +82,7 @@
             color: inherit;
             pointer-events: none;
             z-index: 10;
+            width: auto;
         }
 
         #instructions {
@@ -104,6 +105,7 @@
             z-index: 20;
             white-space: pre-line;
             pointer-events: none;
+            width: 90%;
         }
         .win { color: #4ade80; }
         .lose { color: #f87171; }
@@ -135,6 +137,9 @@
             display: none;
             z-index: 15;
             pointer-events: none;
+            width: max-content;
+            max-width: 90%;
+            text-align: center;
         }
 
         /* UI Element Styling fixes for Menu Mode */
@@ -169,7 +174,7 @@
             border: 2px solid rgba(255, 255, 255, 0.3);
             border-radius: 50%;
             z-index: 50;
-            display: none; /* Shown only in puzzle */
+            display: none; /* Shown only in puzzle + mobile */
             touch-action: none;
         }
         
@@ -185,6 +190,41 @@
             pointer-events: none;
         }
 
+        /* --- Mobile / Phone Specific Styles --- */
+        @media (max-width: 768px) {
+            #ui-layer {
+                /* Move UI from top-left to top-center and make smaller */
+                top: 70px; /* Below the gear icon */
+                left: 50%;
+                transform: translateX(-50%);
+                width: 90%;
+                display: flex;
+                justify-content: center;
+            }
+
+            #instructions {
+                font-size: 12px; /* Smaller text */
+                padding: 8px;
+                max-width: 100%;
+                text-align: center;
+                background: rgba(0, 0, 0, 0.4); /* Less obtrusive opacity */
+            }
+
+            #instructions h2 {
+                font-size: 14px;
+                margin: 0 0 5px 0;
+            }
+            
+            #message {
+                bottom: 180px; /* Ensure it clears joystick */
+                font-size: 14px;
+            }
+            
+            #status-msg {
+                font-size: 28px; /* Smaller win/lose text */
+            }
+        }
+
         @media (prefers-color-scheme: light) {
             body {
                 background-color: #dbeafe;
@@ -196,6 +236,12 @@
                 color: #111827;
             }
             
+            @media (max-width: 768px) {
+                #instructions {
+                    background: rgba(255, 255, 255, 0.7);
+                }
+            }
+
             #gear-btn {
                 background: rgba(255, 255, 255, 0.8);
                 border-color: #111827;
@@ -298,6 +344,9 @@
         let scene, renderer;
         let world;
         const timeStep = 1 / 60;
+
+        // Mobile Detection
+        const isMobileDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
         // Cameras
         let perspCamera, orthoCamera, camera;
@@ -407,25 +456,29 @@
             scene.fog = new THREE.Fog(0x202025, 10, 60);
 
             const aspect = window.innerWidth / window.innerHeight;
-            
-            // Adjust Zoom Scale for Device Type
-            // If aspect < 1 (Portrait/Phone), increase viewSize to see more width
+            const isPortrait = aspect < 1.0;
+
+            // Orthographic Camera (Maze): Adjusted for zoom scale
             let effectiveViewSize = viewSize;
-            if (aspect < 1.0) {
+            if (isPortrait) {
                 effectiveViewSize = viewSize * 1.5;
             }
 
-            // Perspective camera (menu, puzzle, ending)
+            // Perspective Camera (Puzzle): Adjusted for zoom scale
+            // If portrait (phone), move Z back significantly to avoid "zoomed in" feel
+            const puzzleCamDist = isPortrait ? 45 : 25;
+            const puzzleCamHeight = isPortrait ? 35 : 20;
+
             perspCamera = new THREE.PerspectiveCamera(
                 45,
                 aspect,
                 0.1,
-                100
+                200
             );
-            perspCamera.position.set(0, 20, 25);
+            perspCamera.position.set(0, puzzleCamHeight, puzzleCamDist);
             perspCamera.lookAt(0, 0, 0);
 
-            // Orthographic camera (maze rooms)
+            // Orthographic camera
             orthoCamera = new THREE.OrthographicCamera(
                 -effectiveViewSize * aspect,
                 effectiveViewSize * aspect,
@@ -1133,7 +1186,8 @@
 
     function toggleJoystick(visible) {
         const joy = document.getElementById('joystick-zone');
-        joy.style.display = visible ? 'block' : 'none';
+        // Only show joystick if game requests it AND we are on mobile
+        joy.style.display = (visible && isMobileDevice) ? 'block' : 'none';
     }
 
     function loadMenu() {
@@ -1212,7 +1266,7 @@
     function loadPuzzleScene() {
         currentMode = "puzzle";
         hideAllRooms();
-        toggleJoystick(true); // Enable Joystick
+        toggleJoystick(true); // Enable Joystick (will check mobile flag inside)
         puzzleGroup.visible = true;
 
         const instr = document.getElementById('instructions');
@@ -1223,8 +1277,14 @@
         statusEl.style.display = 'none';
         statusEl.className = '';
 
+        // Reset Perspective Camera (Zoom check logic in Init/Resize)
+        const aspect = window.innerWidth / window.innerHeight;
+        const isPortrait = aspect < 1.0;
+        const puzzleCamDist = isPortrait ? 45 : 25;
+        const puzzleCamHeight = isPortrait ? 35 : 20;
+
         camera = perspCamera;
-        camera.position.set(0, 20, 25);
+        camera.position.set(0, puzzleCamHeight, puzzleCamDist);
         camera.lookAt(0, 0, 0);
         cameraBasePosition.copy(camera.position);
 
@@ -1471,12 +1531,11 @@
     // --- Misc ---
     function onWindowResize() {
         const aspect = window.innerWidth / window.innerHeight;
+        const isPortrait = aspect < 1.0;
 
-        // Dynamic Zoom Scaling:
-        // If the device is portrait (phone), we increase the viewSize
-        // to ensure the width of the maze is visible.
+        // Dynamic Zoom Scaling for Ortho (Maze)
         let effectiveViewSize = viewSize;
-        if (aspect < 1.0) {
+        if (isPortrait) {
             effectiveViewSize = viewSize * 1.5;
         }
 
@@ -1486,7 +1545,18 @@
         orthoCamera.bottom = -effectiveViewSize;
         orthoCamera.updateProjectionMatrix();
 
+        // Dynamic Zoom Scaling for Perspective (Puzzle)
+        // If portrait, zoom out (increase Z) to see the board
+        const puzzleCamDist = isPortrait ? 45 : 25;
+        const puzzleCamHeight = isPortrait ? 35 : 20;
+
         perspCamera.aspect = aspect;
+        // Only update position if we are currently in puzzle mode to avoid jumping
+        // or update it generally but rely on loadPuzzleScene to reset it correctly
+        if (currentMode === 'puzzle') {
+             perspCamera.position.set(0, puzzleCamHeight, puzzleCamDist);
+             perspCamera.lookAt(0,0,0);
+        }
         perspCamera.updateProjectionMatrix();
 
         renderer.setSize(window.innerWidth, window.innerHeight);
