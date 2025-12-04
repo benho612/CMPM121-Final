@@ -1,5 +1,5 @@
 # CMPM121-Final 
-# Devlog Entry - [12-4-2025]  
+# Devlog Entry - [12-3-2025]  
 ## How we satisfied the software requirements  
 For the F3 requirements, we decided to satisfy numbers 3, 4, 5, and 6. For number 3, the reason we did this is that this fits our game the best, since there's nothing like water buckets, or anything like that would need to live that long. However, at the same time, we want to provide the chance for the player to resume their game if they decided to do something else in the meantime. The reason we picked 4 is that we also decided to pick number 5; we thought they would be a good combination since some people would keep their phone's default theme as dark. The reason we picked number 5 is that we want  people to try our game on the phone, will also be supportive of number 4. Lastly, we picked number 6 since we want more people to try our game. By providing a multi-language environment, this game shows diversity. 
 ## How we satisfied the software requirements  
